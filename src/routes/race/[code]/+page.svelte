@@ -4,11 +4,9 @@
 	import { page } from '$app/stores';
 	import { KeepAwake } from '@capacitor-community/keep-awake';
 	import { raceState } from '$lib/stores/race.svelte.js';
-	import { signaling } from '$lib/webrtc/signaling.js';
-	import { peerManager } from '$lib/webrtc/peer-manager.js';
-	import { handlePeerMessage, startBroadcasting, stopBroadcasting } from '$lib/webrtc/data-channel.js';
+	import { signaling } from '$lib/signaling.js';
 	import { GeoTracker } from '$lib/geo/tracker.js';
-	import { playCountdownBeep, playGoSound, playFinishSound } from '$lib/utils/sounds.js';
+	import { playGoSound, playFinishSound } from '$lib/utils/sounds.js';
 	import Lobby from '$lib/components/Lobby.svelte';
 	import Countdown from '$lib/components/Countdown.svelte';
 	import RaceView from '$lib/components/RaceView.svelte';
@@ -18,7 +16,7 @@
 	let showPrivacy = $state(typeof localStorage !== 'undefined' ? !localStorage.getItem('privacyAccepted') : true);
 	let gpsGranted = $state(false);
 	let tracker: GeoTracker | null = null;
-	let distanceInterval: ReturnType<typeof setInterval> | null = null;
+	let lastDistanceSend = 0;
 
 	onMount(() => {
 		// If no race code in state, redirect home
@@ -32,9 +30,6 @@
 
 	onDestroy(() => {
 		tracker?.stop();
-		stopBroadcasting();
-		peerManager.destroy();
-		if (distanceInterval) clearInterval(distanceInterval);
 		KeepAwake.allowSleep().catch(() => {});
 	});
 
@@ -56,48 +51,26 @@
 			raceState.setPlayerReady(msg.playerId, msg.ready);
 		});
 
-		signaling.on('countdown-start', () => {
+		signaling.on('countdown-start', (msg) => {
+			raceState.startTime = msg.startTime;
 			raceState.phase = 'countdown';
-			raceState.countdownValue = 10;
-
-			// Setup WebRTC during countdown
-			const peerIds = raceState.players.map((p) => p.id);
-			peerManager.setMyId(raceState.myId);
-			peerManager.onDataChannel((peerId, channel) => {
-				channel.onmessage = (e) => handlePeerMessage(peerId, e.data);
-			});
-			peerManager.startSignaling(peerIds);
-		});
-
-		signaling.on('countdown-tick', (msg) => {
-			raceState.countdownValue = msg.value;
-			if (msg.value > 0 && msg.value <= 3) {
-				playCountdownBeep();
-			}
 		});
 
 		signaling.on('countdown-cancelled', () => {
 			raceState.phase = 'lobby';
-			peerManager.destroy();
 		});
 
 		signaling.on('race-started', () => {
 			playGoSound();
 			raceState.phase = 'racing';
 			startTracking();
-			startBroadcasting();
-
-			// Also broadcast distance via WebSocket as fallback
-			distanceInterval = setInterval(() => {
-				signaling.send({
-					type: 'distance',
-					distance: raceState.myDistance
-				});
-			}, 1000);
 		});
 
-		signaling.on('player-distance', (msg) => {
-			raceState.updatePlayerDistance(msg.playerId, msg.distance);
+		signaling.on('race-distances', (msg) => {
+			for (const p of msg.players) {
+				raceState.updatePlayerDistance(p.id, p.distance);
+				if (p.finished) raceState.markPlayerFinished(p.id);
+			}
 		});
 
 		signaling.on('player-finished', (msg) => {
@@ -154,22 +127,23 @@
 			// Update my own player
 			raceState.updatePlayerDistance(raceState.myId, state.totalDistance);
 
+			// Send distance update, throttled to at most once per 5 seconds
+			const now = Date.now();
+			if (now - lastDistanceSend >= 5000) {
+				lastDistanceSend = now;
+				signaling.send({ type: 'distance', distance: state.totalDistance });
+			}
+
 			// Check finish
 			if (state.totalDistance >= raceState.targetDistance && !raceState.myPlayer?.finished) {
 				raceState.markPlayerFinished(raceState.myId);
 				playFinishSound();
 				signaling.send({ type: 'finished' });
-				peerManager.sendToAll(JSON.stringify({ type: 'finished' }));
 
 				// Show finish screen after a moment
 				setTimeout(() => {
 					raceState.phase = 'finished';
 					tracker?.stop();
-					stopBroadcasting();
-					if (distanceInterval) {
-						clearInterval(distanceInterval);
-						distanceInterval = null;
-					}
 				}, 1500);
 			}
 		});
