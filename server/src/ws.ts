@@ -141,6 +141,9 @@ function handleMessage(ws: WebSocket, state: ClientState, msg: any): void {
 		case 'ghost-finished':
 			handleGhostFinished(ws, state, msg);
 			break;
+		case 'ghost-cancel-countdown':
+			handleGhostCancelCountdown(ws, state);
+			break;
 	}
 }
 
@@ -573,6 +576,25 @@ function handleGhostStartRun(ws: WebSocket, state: ClientState): void {
 			}
 		}, 5000);
 	}, 10_000);
+}
+
+function handleGhostCancelCountdown(ws: WebSocket, state: ClientState): void {
+	if (!state.roomCode) return;
+	const room = getRoom(state.roomCode);
+	if (!room || room.mode !== 'ghost' || !room.activeRuns) return;
+
+	const activeRun = room.activeRuns.get(state.id);
+	if (!activeRun) return;
+
+	// Clear the countdown timer that would trigger ghost-race-started
+	if (activeRun.broadcastTimer) clearInterval(activeRun.broadcastTimer);
+	if (room.countdownTimer) {
+		clearTimeout(room.countdownTimer);
+		room.countdownTimer = null;
+	}
+	room.activeRuns.delete(state.id);
+
+	send(ws, { type: 'ghost-countdown-cancelled' });
 }
 
 function handleGhostDistance(ws: WebSocket, state: ClientState, msg: any): void {

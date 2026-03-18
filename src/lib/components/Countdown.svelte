@@ -9,7 +9,13 @@
 	let lastBeep = -1;
 
 	function cancel() {
-		signaling.send({ type: 'cancel-countdown' });
+		if (raceState.isGhostRace) {
+			signaling.send({ type: 'ghost-cancel-countdown' });
+			raceState.myPersonalPhase = 'waiting';
+			raceState.startTime = null;
+		} else {
+			signaling.send({ type: 'cancel-countdown' });
+		}
 	}
 
 	function updateCountdown() {
@@ -43,7 +49,7 @@
 			{/if}
 		</div>
 
-		{#if raceState.isOwner && secondsLeft > 0}
+		{#if (raceState.isOwner || raceState.isGhostRace) && secondsLeft > 0}
 			<button class="btn btn-secondary cancel-btn" onclick={cancel}>Cancel</button>
 		{/if}
 	</div>
