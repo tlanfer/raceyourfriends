@@ -31,6 +31,12 @@ jobs:
       - name: Add and sync Capacitor iOS platform
         run: npx cap add ios && npx cap sync ios
 
+      - name: Set location usage descriptions in Info.plist
+        run: |
+          PLIST="ios/App/App/Info.plist"
+          /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string 'Race Your Friends needs your location to track your distance during races.'" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :NSLocationAlwaysAndWhenInUseUsageDescription string 'Race Your Friends needs your location in the background to keep tracking your distance while the app is minimized during a race.'" "$PLIST"
+
       - name: Extract version from tag
         id: version
         run: |
