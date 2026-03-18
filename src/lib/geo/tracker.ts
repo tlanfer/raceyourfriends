@@ -9,15 +9,19 @@ export interface TrackerState {
 	isTracking: boolean;
 }
 
-const MAX_ACCURACY = 20; // meters
+const MAX_ACCURACY = 15; // meters
 const MAX_SPEED = 50 * 1000 / 3600; // 50 km/h in m/s
-const MIN_DELTA = 1; // meters
+const MIN_DELTA = 3; // meters
+const ACCURACY_FACTOR = 0.5;
+const SMOOTHING_ALPHA = 0.4;
 const SIGNAL_TIMEOUT = 10_000; // ms
 
 export class GeoTracker {
 	private lastLat: number | null = null;
 	private lastLon: number | null = null;
 	private lastTime: number = 0;
+	private smoothedLat: number | null = null;
+	private smoothedLon: number | null = null;
 	private signalTimer: ReturnType<typeof setTimeout> | null = null;
 	private webWatchId: number | null = null;
 
@@ -48,6 +52,8 @@ export class GeoTracker {
 		this.totalDistance = 0;
 		this.lastLat = null;
 		this.lastLon = null;
+		this.smoothedLat = null;
+		this.smoothedLon = null;
 		this.notify();
 
 		if (Capacitor.isNativePlatform()) {
@@ -111,11 +117,21 @@ export class GeoTracker {
 			return;
 		}
 
-		if (this.lastLat !== null && this.lastLon !== null) {
-			const dist = haversine(this.lastLat, this.lastLon, latitude, longitude);
+		// EMA smoothing
+		if (this.smoothedLat === null || this.smoothedLon === null) {
+			this.smoothedLat = latitude;
+			this.smoothedLon = longitude;
+		} else {
+			this.smoothedLat = SMOOTHING_ALPHA * latitude + (1 - SMOOTHING_ALPHA) * this.smoothedLat;
+			this.smoothedLon = SMOOTHING_ALPHA * longitude + (1 - SMOOTHING_ALPHA) * this.smoothedLon;
+		}
 
-			// Jitter filter: minimum delta
-			if (dist < MIN_DELTA) {
+		if (this.lastLat !== null && this.lastLon !== null) {
+			const dist = haversine(this.lastLat, this.lastLon, this.smoothedLat, this.smoothedLon);
+
+			// Jitter filter: accuracy-proportional minimum delta
+			const effectiveMinDelta = Math.max(MIN_DELTA, coords.accuracy * ACCURACY_FACTOR);
+			if (dist < effectiveMinDelta) {
 				this.notify();
 				return;
 			}
@@ -131,8 +147,8 @@ export class GeoTracker {
 			this.totalDistance += dist;
 		}
 
-		this.lastLat = latitude;
-		this.lastLon = longitude;
+		this.lastLat = this.smoothedLat;
+		this.lastLon = this.smoothedLon;
 		this.lastTime = Date.now();
 		this.notify();
 	}
