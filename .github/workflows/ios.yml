@@ -74,6 +74,7 @@ jobs:
             -authenticationKeyPath ~/private_keys/AuthKey_${API_KEY_ID}.p8 \
             -authenticationKeyID "$API_KEY_ID" \
             -authenticationKeyIssuerID "$API_ISSUER_ID" \
+            DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
             MARKETING_VERSION="${{ steps.version.outputs.marketing_version }}" \
             CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build_number }}"
 
