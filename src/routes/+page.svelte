@@ -5,8 +5,7 @@
 
 <div class="page">
 	<header>
-		<h1>Race<span class="accent">Your</span>Friends</h1>
-		<p class="tagline">GPS racing. Anywhere. Against anyone.</p>
+		<img src="/icon.png" alt="Race Your Friends" class="logo" />
 	</header>
 
 	<main>
@@ -18,23 +17,12 @@
 <style>
 	header {
 		text-align: center;
-		padding: 32px 0 24px;
+		padding: 16px 0 12px;
 	}
 
-	h1 {
-		font-size: 2rem;
-		font-weight: 900;
-		letter-spacing: -0.02em;
-	}
-
-	.accent {
-		color: var(--accent);
-	}
-
-	.tagline {
-		color: var(--text-muted);
-		font-size: 0.95rem;
-		margin-top: 6px;
+	.logo {
+		width: 180px;
+		height: auto;
 	}
 
 	main {
