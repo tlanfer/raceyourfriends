@@ -2,6 +2,7 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { KeepAwake } from '@capacitor-community/keep-awake';
 	import { raceState } from '$lib/stores/race.svelte.js';
 	import { signaling } from '$lib/webrtc/signaling.js';
 	import { peerManager } from '$lib/webrtc/peer-manager.js';
@@ -34,6 +35,7 @@
 		stopBroadcasting();
 		peerManager.destroy();
 		if (distanceInterval) clearInterval(distanceInterval);
+		KeepAwake.allowSleep().catch(() => {});
 	});
 
 	function setupSignalingListeners() {
@@ -128,15 +130,21 @@
 	function acceptPrivacy() {
 		showPrivacy = false;
 		localStorage.setItem('privacyAccepted', '1');
-		// Request GPS permission now so it's ready when the race starts
-		navigator.geolocation.getCurrentPosition(
-			() => { gpsGranted = true; },
-			() => { /* User denied — they'll get prompted again on race start */ },
-			{ enableHighAccuracy: true }
-		);
+		// On web, request GPS permission now so it's ready when the race starts.
+		// On native, BackgroundGeolocation.start() handles permission requests.
+		if ('geolocation' in navigator) {
+			navigator.geolocation.getCurrentPosition(
+				() => { gpsGranted = true; },
+				() => { /* User denied — they'll get prompted again on race start */ },
+				{ enableHighAccuracy: true }
+			);
+		}
 	}
 
-	function startTracking() {
+	async function startTracking() {
+		// Keep screen awake during the race
+		KeepAwake.keepAwake().catch(() => {});
+
 		tracker = new GeoTracker();
 		tracker.onUpdate((state) => {
 			raceState.myDistance = state.totalDistance;
@@ -165,7 +173,7 @@
 				}, 1500);
 			}
 		});
-		tracker.start();
+		await tracker.start();
 	}
 </script>
 

@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+
 type MessageHandler = (msg: any) => void;
 
 export class SignalingClient {
@@ -7,9 +9,13 @@ export class SignalingClient {
 	private url: string;
 
 	constructor() {
-		const protocol = typeof location !== 'undefined' && location.protocol === 'https:' ? 'wss:' : 'ws:';
-		const host = typeof location !== 'undefined' ? location.host : 'localhost:3000';
-		this.url = `${protocol}//${host}/ws`;
+		if (Capacitor.isNativePlatform() && import.meta.env.VITE_WS_URL) {
+			this.url = import.meta.env.VITE_WS_URL;
+		} else {
+			const protocol = typeof location !== 'undefined' && location.protocol === 'https:' ? 'wss:' : 'ws:';
+			const host = typeof location !== 'undefined' ? location.host : 'localhost:3000';
+			this.url = `${protocol}//${host}/ws`;
+		}
 	}
 
 	clearHandlers(): void {

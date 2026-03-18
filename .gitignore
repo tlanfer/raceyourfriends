@@ -7,6 +7,11 @@ node_modules
 .wrangler
 /.svelte-kit
 /build
+/build-static
+
+# Capacitor native projects
+/ios
+/android
 
 # OS
 .DS_Store

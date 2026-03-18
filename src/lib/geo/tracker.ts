@@ -1,3 +1,5 @@
+import { Capacitor } from '@capacitor/core';
+import { BackgroundGeolocation } from '@capgo/background-geolocation';
 import { haversine } from './distance.js';
 
 export interface TrackerState {
@@ -13,11 +15,11 @@ const MIN_DELTA = 1; // meters
 const SIGNAL_TIMEOUT = 10_000; // ms
 
 export class GeoTracker {
-	private watchId: number | null = null;
 	private lastLat: number | null = null;
 	private lastLon: number | null = null;
 	private lastTime: number = 0;
 	private signalTimer: ReturnType<typeof setTimeout> | null = null;
+	private webWatchId: number | null = null;
 
 	totalDistance = 0;
 	accuracy: number | null = null;
@@ -39,8 +41,8 @@ export class GeoTracker {
 		});
 	}
 
-	start(): void {
-		if (this.isTracking || !('geolocation' in navigator)) return;
+	async start(): Promise<void> {
+		if (this.isTracking) return;
 
 		this.isTracking = true;
 		this.totalDistance = 0;
@@ -48,17 +50,45 @@ export class GeoTracker {
 		this.lastLon = null;
 		this.notify();
 
-		this.watchId = navigator.geolocation.watchPosition(
-			(pos) => this.handlePosition(pos),
-			() => this.handleError(),
-			{ enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
-		);
+		if (Capacitor.isNativePlatform()) {
+			await BackgroundGeolocation.start(
+				{
+					backgroundTitle: 'Race Your Friends',
+					backgroundMessage: 'Tracking your distance...',
+					requestPermissions: true,
+					stale: false,
+					distanceFilter: 0
+				},
+				(location, error) => {
+					if (error) {
+						this.handleError();
+						return;
+					}
+					if (location) {
+						this.handlePosition({
+							latitude: location.latitude,
+							longitude: location.longitude,
+							accuracy: location.accuracy
+						});
+					}
+				}
+			);
+		} else {
+			if (!('geolocation' in navigator)) return;
+			this.webWatchId = navigator.geolocation.watchPosition(
+				(pos) => this.handlePosition(pos.coords),
+				() => this.handleError(),
+				{ enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+			);
+		}
 	}
 
-	stop(): void {
-		if (this.watchId !== null) {
-			navigator.geolocation.clearWatch(this.watchId);
-			this.watchId = null;
+	async stop(): Promise<void> {
+		if (Capacitor.isNativePlatform()) {
+			await BackgroundGeolocation.stop().catch(() => {});
+		} else if (this.webWatchId !== null) {
+			navigator.geolocation.clearWatch(this.webWatchId);
+			this.webWatchId = null;
 		}
 		if (this.signalTimer) {
 			clearTimeout(this.signalTimer);
@@ -68,15 +98,15 @@ export class GeoTracker {
 		this.notify();
 	}
 
-	private handlePosition(pos: GeolocationPosition): void {
+	private handlePosition(coords: { latitude: number; longitude: number; accuracy: number }): void {
 		this.resetSignalTimer();
 		this.hasSignal = true;
-		this.accuracy = pos.coords.accuracy;
+		this.accuracy = coords.accuracy;
 
-		const { latitude, longitude } = pos.coords;
+		const { latitude, longitude } = coords;
 
 		// Jitter filter: accuracy
-		if (pos.coords.accuracy > MAX_ACCURACY) {
+		if (coords.accuracy > MAX_ACCURACY) {
 			this.notify();
 			return;
 		}

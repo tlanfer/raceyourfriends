@@ -12,15 +12,25 @@
 		"check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
 		"check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",
 		"test": "vitest run",
-		"test:watch": "vitest"
+		"test:watch": "vitest",
+		"build:cap": "cross-env SVELTE_CONFIG=capacitor vite build",
+		"cap:sync": "npm run build:cap && npx cap sync"
 	},
 	"dependencies": {
+		"@capacitor-community/keep-awake": "^8.0.0",
+		"@capacitor/android": "^8.2.0",
+		"@capacitor/core": "^8.2.0",
+		"@capacitor/ios": "^8.2.0",
+		"@capgo/background-geolocation": "^8.0.26",
 		"ws": "^8.18.0"
 	},
 	"devDependencies": {
+		"@capacitor/cli": "^8.2.0",
 		"@sveltejs/adapter-node": "^5.0.0",
+		"@sveltejs/adapter-static": "^3.0.10",
 		"@sveltejs/kit": "^2.50.2",
 		"@sveltejs/vite-plugin-svelte": "^6.2.4",
+		"cross-env": "^10.1.0",
 		"svelte": "^5.51.0",
 		"svelte-check": "^4.4.2",
 		"typescript": "^5.9.3",
