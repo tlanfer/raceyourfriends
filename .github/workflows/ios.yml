@@ -31,6 +31,9 @@ jobs:
       - name: Add and sync Capacitor iOS platform
         run: npx cap add ios && npx cap sync ios
 
+      - name: Generate app icons and splash screens
+        run: npx @capacitor/assets generate --ios --iconBackgroundColor '#0B090B' --iconBackgroundColorDark '#0B090B' --splashBackgroundColor '#0B090B' --splashBackgroundColorDark '#0B090B'
+
       - name: Configure Info.plist
         run: |
           PLIST="ios/App/App/Info.plist"

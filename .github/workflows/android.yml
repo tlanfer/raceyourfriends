@@ -33,6 +33,9 @@ jobs:
       - name: Add and sync Capacitor Android platform
         run: npx cap add android && npx cap sync android
 
+      - name: Generate app icons and splash screens
+        run: npx @capacitor/assets generate --android --iconBackgroundColor '#0B090B' --iconBackgroundColorDark '#0B090B' --splashBackgroundColor '#0B090B' --splashBackgroundColorDark '#0B090B'
+
       - uses: android-actions/setup-android@v3
 
       - name: Extract version from tag
