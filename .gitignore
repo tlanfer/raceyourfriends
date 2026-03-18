@@ -8,6 +8,7 @@ node_modules
 /.svelte-kit
 /build
 /build-static
+/server/dist
 
 # Capacitor native projects
 /ios

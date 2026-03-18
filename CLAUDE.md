@@ -8,26 +8,35 @@ Race Your Friends is a real-time GPS racing app where players compete by physica
 
 ## Commands
 
-- `npm run dev` — Start dev server (Vite)
-- `npm run build` — Production build (Node adapter)
-- `npm run preview` / `npm start` — Run production server via `server.js`
+- `npm run dev` — Start dev server (Vite) with integrated WebSocket server
+- `npm run build` — Production build (static adapter, outputs to `build-static/`)
 - `npm run check` — Type-check with svelte-check
 - `npm run test` — Run tests with vitest
 - `npm run test:watch` — Run tests in watch mode
-- `npm run build:cap` — Build for Capacitor (static adapter, outputs to `build-static/`)
+- `npm run build:cap` — Build for Capacitor (same as `build`)
 - `npm run cap:sync` — Build + sync Capacitor native projects
+
+### Standalone server (`server/`)
+- `cd server && npm install` — Install server dependencies
+- `cd server && npm run build` — Build TypeScript
+- `cd server && npm start` — Run standalone WebSocket server
+- `docker build -t raceyourfriends-server server/` — Build Docker image
 
 ## Architecture
 
-### Dual build targets
-`svelte.config.js` switches adapters based on `SVELTE_CONFIG` env var:
-- Default: `adapter-node` for web deployment (SSR + WebSocket server)
-- `SVELTE_CONFIG=capacitor`: `adapter-static` outputting to `build-static/` for native apps
+### Build targets
+The app always builds as static files via `adapter-static` (output: `build-static/`). The WebSocket signaling server is a separate standalone package in `server/`.
 
-### Server-side (Node.js)
-- **`server.js`** — Production entry point. Creates HTTP server from SvelteKit's built handler, then attaches WebSocket server.
-- **`src/lib/server/ws.ts`** — WebSocket server handling all signaling: room management, race lifecycle (create/join/ready/countdown/start/finish), RTC signaling relay, chat, emotes, and distance broadcasting. Listens on `/ws` path only.
-- **`src/lib/server/race-rooms.ts`** — In-memory room state management.
+### Standalone server (`server/`)
+- **`server/src/index.ts`** — Entry point. Creates HTTP server with health check endpoint, attaches WebSocket server.
+- **`server/src/ws.ts`** — WebSocket server handling all signaling: room management, race lifecycle (create/join/ready/countdown/start/finish), RTC signaling relay, chat, emotes, and distance broadcasting. Listens on `/ws` path only.
+- **`server/src/race-rooms.ts`** — In-memory room state management.
+- **`server/src/race-code.ts`** — Race code generation.
+- **`server/Dockerfile`** — Multi-stage Docker build for deployment.
+
+### Dev server integration
+- **`src/lib/server/ws.ts`** — Same WebSocket server code, loaded by the Vite dev plugin for local development (`npm run dev` runs both app and server together).
+- **`src/lib/server/race-rooms.ts`** — In-memory room state management (dev).
 
 ### Client-side
 - **`src/lib/stores/race.svelte.ts`** — Central reactive state using Svelte 5 runes (`$state`). Single `RaceState` class exported as singleton. Manages race phase transitions: `setup → lobby → countdown → racing → finished`.
@@ -54,5 +63,4 @@ Race Your Friends is a real-time GPS racing app where players compete by physica
 ## Environment Variables
 
 - `VITE_WS_URL` — WebSocket server URL for native Capacitor builds (see `.env.example`)
-- `PORT` — Server port (default 3000)
-- `SVELTE_CONFIG=capacitor` — Switches to static adapter for native builds
+- `PORT` — Server port (default 3000, used by standalone server)

@@ -6,7 +6,7 @@
 	import { signaling } from '$lib/webrtc/signaling.js';
 	import NameInput from '$lib/components/NameInput.svelte';
 
-	const code = $derived($page.params.code.toUpperCase());
+	const code = $derived(($page.params.code ?? '').toUpperCase());
 	const validCode = $derived(isValidRaceCode(code));
 
 	let error = $state('');
