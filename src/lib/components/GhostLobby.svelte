@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { raceState } from '$lib/stores/race.svelte.js';
 	import { signaling } from '$lib/signaling.js';
 	import ChatPanel from './ChatPanel.svelte';
@@ -57,7 +58,10 @@
 		if (timer) clearInterval(timer);
 	});
 
+	const hasGps = $derived(raceState.gpsHasSignal);
+
 	function startMyRun() {
+		if (!hasGps) return;
 		signaling.send({ type: 'ghost-start-run' });
 	}
 
@@ -82,6 +86,12 @@
 		const minutes = Math.floor(totalSeconds / 60);
 		const seconds = totalSeconds % 60;
 		return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+	}
+
+	function leaveRace() {
+		signaling.disconnect();
+		raceState.reset();
+		goto('/');
 	}
 
 	function medal(index: number): string {
@@ -113,11 +123,19 @@
 		{/if}
 
 		{#if !expired}
-			<button class="btn btn-primary start-btn" onclick={startMyRun}>
+			{#if !hasGps}
+				<div class="gps-status">
+					<span class="gps-spinner"></span>
+					Waiting for GPS signal...
+				</div>
+			{/if}
+			<button class="btn btn-primary start-btn" onclick={startMyRun} disabled={!hasGps}>
 				Start My Run
 			</button>
+			<button class="btn-leave" onclick={leaveRace}>Leave Race</button>
 		{:else}
 			<div class="expired-notice">This race has closed</div>
+			<button class="btn btn-secondary start-btn" onclick={leaveRace}>Back to Home</button>
 		{/if}
 	</div>
 
@@ -300,5 +318,41 @@
 	.rank {
 		font-weight: 700;
 		color: var(--text-muted);
+	}
+
+	.gps-status {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
+
+	.gps-spinner {
+		width: 12px;
+		height: 12px;
+		border: 2px solid rgba(255, 255, 255, 0.2);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 1s linear infinite;
+	}
+
+	.btn-leave {
+		background: none;
+		border: none;
+		color: var(--text-muted);
+		font-size: 0.8rem;
+		padding: 8px;
+		cursor: pointer;
+		text-align: center;
+		width: 100%;
+	}
+
+	.btn-leave:hover {
+		color: var(--text);
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
 	}
 </style>

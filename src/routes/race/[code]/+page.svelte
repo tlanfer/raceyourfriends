@@ -2,6 +2,8 @@
 	import { onMount, onDestroy } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { page } from '$app/stores';
+	import { Capacitor } from '@capacitor/core';
+	import { BackgroundGeolocation } from '@capgo/background-geolocation';
 	import { KeepAwake } from '@capacitor-community/keep-awake';
 	import { raceState } from '$lib/stores/race.svelte.js';
 	import { signaling } from '$lib/signaling.js';
@@ -14,6 +16,7 @@
 	import FinishLine from '$lib/components/FinishLine.svelte';
 	import GhostLobby from '$lib/components/GhostLobby.svelte';
 	import GhostFinishLine from '$lib/components/GhostFinishLine.svelte';
+	import ConnectionLost from '$lib/components/ConnectionLost.svelte';
 	import PrivacyNotice from '$lib/components/PrivacyNotice.svelte';
 
 	let showPrivacy = $state(typeof localStorage !== 'undefined' ? !localStorage.getItem('privacyAccepted') : true);
@@ -21,6 +24,68 @@
 	let tracker: GeoTracker | null = null;
 	let ghostPlayback: GhostPlayback | null = null;
 	let lastDistanceSend = 0;
+	let gpsWarmupId: number | null = null;
+	let gpsWarmupTimer: ReturnType<typeof setTimeout> | null = null;
+	let removeOpenHandler: (() => void) | null = null;
+	let removeCloseHandler: (() => void) | null = null;
+
+	function startGpsWarmup() {
+		if (Capacitor.isNativePlatform()) {
+			// On native, use background geolocation for warmup
+			BackgroundGeolocation.start(
+				{
+					backgroundTitle: 'Race Your Friends',
+					backgroundMessage: 'Acquiring GPS signal...',
+					requestPermissions: true,
+					stale: false,
+					distanceFilter: 0
+				},
+				(location, error) => {
+					if (error) {
+						raceState.gpsHasSignal = false;
+						return;
+					}
+					if (location) {
+						raceState.gpsAccuracy = location.accuracy;
+						raceState.gpsHasSignal = true;
+						resetGpsWarmupTimer();
+					}
+				}
+			);
+		} else if ('geolocation' in navigator) {
+			gpsWarmupId = navigator.geolocation.watchPosition(
+				(pos) => {
+					raceState.gpsAccuracy = pos.coords.accuracy;
+					raceState.gpsHasSignal = true;
+					resetGpsWarmupTimer();
+				},
+				() => {
+					raceState.gpsHasSignal = false;
+				},
+				{ enableHighAccuracy: true, maximumAge: 2000, timeout: 5000 }
+			);
+		}
+	}
+
+	function resetGpsWarmupTimer() {
+		if (gpsWarmupTimer) clearTimeout(gpsWarmupTimer);
+		gpsWarmupTimer = setTimeout(() => {
+			raceState.gpsHasSignal = false;
+		}, 10_000);
+	}
+
+	function stopGpsWarmup() {
+		if (Capacitor.isNativePlatform()) {
+			BackgroundGeolocation.stop().catch(() => {});
+		} else if (gpsWarmupId !== null) {
+			navigator.geolocation.clearWatch(gpsWarmupId);
+			gpsWarmupId = null;
+		}
+		if (gpsWarmupTimer) {
+			clearTimeout(gpsWarmupTimer);
+			gpsWarmupTimer = null;
+		}
+	}
 
 	onMount(() => {
 		// If no race code in state, redirect home
@@ -28,6 +93,16 @@
 			goto('/');
 			return;
 		}
+
+		startGpsWarmup();
+
+		// Track connection state
+		removeOpenHandler = signaling.on('open', () => {
+			raceState.connected = true;
+		});
+		removeCloseHandler = signaling.on('close', () => {
+			raceState.connected = false;
+		});
 
 		if (raceState.isGhostRace) {
 			setupGhostSignalingListeners();
@@ -37,8 +112,11 @@
 	});
 
 	onDestroy(() => {
+		stopGpsWarmup();
 		tracker?.stop();
 		ghostPlayback?.stop();
+		removeOpenHandler?.();
+		removeCloseHandler?.();
 		KeepAwake.allowSleep().catch(() => {});
 	});
 
@@ -175,6 +253,25 @@
 		});
 	}
 
+	function quitRace() {
+		if (raceState.isGhostRace) {
+			signaling.send({ type: 'ghost-finished', distance: raceState.myDistance });
+			raceState.markPlayerFinished(raceState.myId);
+			tracker?.stop();
+			tracker = null;
+			ghostPlayback?.stop();
+			ghostPlayback = null;
+			raceState.myPersonalPhase = 'finished';
+		} else {
+			signaling.send({ type: 'finished' });
+			raceState.markPlayerFinished(raceState.myId);
+			tracker?.stop();
+			tracker = null;
+			raceState.phase = 'finished';
+		}
+		KeepAwake.allowSleep().catch(() => {});
+	}
+
 	function acceptPrivacy() {
 		showPrivacy = false;
 		localStorage.setItem('privacyAccepted', '1');
@@ -188,6 +285,7 @@
 	}
 
 	async function startTracking() {
+		stopGpsWarmup();
 		KeepAwake.keepAwake().catch(() => {});
 
 		tracker = new GeoTracker();
@@ -219,6 +317,7 @@
 	}
 
 	async function startGhostTracking() {
+		stopGpsWarmup();
 		KeepAwake.keepAwake().catch(() => {});
 
 		// Initialize ghost playback
@@ -288,7 +387,7 @@
 		{:else if raceState.myPersonalPhase === 'countdown'}
 			<Countdown />
 		{:else if raceState.myPersonalPhase === 'racing'}
-			<RaceView />
+			<RaceView onQuit={quitRace} />
 		{:else if raceState.myPersonalPhase === 'finished'}
 			<GhostFinishLine />
 		{/if}
@@ -298,11 +397,13 @@
 		{:else if raceState.phase === 'countdown'}
 			<Countdown />
 		{:else if raceState.phase === 'racing'}
-			<RaceView />
+			<RaceView onQuit={quitRace} />
 		{:else if raceState.phase === 'finished'}
 			<FinishLine />
 		{/if}
 	{/if}
+
+	<ConnectionLost />
 
 	{#if showPrivacy}
 		<PrivacyNotice onAccept={acceptPrivacy} />

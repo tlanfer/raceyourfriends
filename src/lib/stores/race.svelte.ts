@@ -75,6 +75,9 @@ class RaceState {
 	myPersonalPhase = $state<GhostPersonalPhase>('waiting');
 	ghostPersonalStartTime = $state<number | null>(null);
 
+	// Connection state
+	connected = $state(true);
+
 	get myPlayer(): Player | undefined {
 		return this.players.find((p) => p.id === this.myId);
 	}
@@ -156,6 +159,7 @@ class RaceState {
 		this.ghostPlayers = [];
 		this.myPersonalPhase = 'waiting';
 		this.ghostPersonalStartTime = null;
+		this.connected = true;
 	}
 }
 

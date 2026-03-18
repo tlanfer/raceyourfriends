@@ -7,6 +7,14 @@
 
 	import type { Player } from '$lib/stores/race.svelte.js';
 
+	interface Props {
+		onQuit?: () => void;
+	}
+
+	let { onQuit }: Props = $props();
+
+	let showQuitConfirm = $state(false);
+
 	function formatDistance(m: number): string {
 		if (m >= 1000) return `${(m / 1000).toFixed(2)} km`;
 		return `${Math.round(m)} m`;
@@ -117,7 +125,20 @@
 			<span class="big">{formatDistance(raceState.myDistance)}</span>
 			<span class="target">/ {formatDistance(raceState.targetDistance)}</span>
 		</div>
-		<GpsStatus />
+		<div class="header-right">
+			{#if onQuit}
+				{#if showQuitConfirm}
+					<div class="quit-confirm">
+						<span>Quit?</span>
+						<button class="btn-quit-yes" onclick={onQuit}>Yes</button>
+						<button class="btn-quit-no" onclick={() => showQuitConfirm = false}>No</button>
+					</div>
+				{:else}
+					<button class="btn-quit" onclick={() => showQuitConfirm = true}>Quit</button>
+				{/if}
+			{/if}
+			<GpsStatus />
+		</div>
 	</div>
 
 	<div class="players" bind:this={playersEl}>
@@ -145,6 +166,58 @@
 		justify-content: space-between;
 		align-items: flex-end;
 		padding: 8px 0;
+	}
+
+	.header-right {
+		display: flex;
+		align-items: center;
+		gap: 12px;
+	}
+
+	.btn-quit {
+		background: rgba(255, 255, 255, 0.08);
+		border: 1px solid rgba(255, 255, 255, 0.12);
+		border-radius: 8px;
+		color: var(--text-muted);
+		font-size: 0.75rem;
+		font-weight: 600;
+		padding: 6px 12px;
+		cursor: pointer;
+	}
+
+	.btn-quit:hover {
+		color: var(--text);
+		border-color: rgba(255, 255, 255, 0.25);
+	}
+
+	.quit-confirm {
+		display: flex;
+		align-items: center;
+		gap: 6px;
+		font-size: 0.75rem;
+		color: var(--text-muted);
+	}
+
+	.btn-quit-yes {
+		background: #ef4444;
+		border: none;
+		border-radius: 6px;
+		color: white;
+		font-size: 0.7rem;
+		font-weight: 700;
+		padding: 4px 10px;
+		cursor: pointer;
+	}
+
+	.btn-quit-no {
+		background: rgba(255, 255, 255, 0.1);
+		border: none;
+		border-radius: 6px;
+		color: var(--text-muted);
+		font-size: 0.7rem;
+		font-weight: 600;
+		padding: 4px 10px;
+		cursor: pointer;
 	}
 
 	.my-distance {

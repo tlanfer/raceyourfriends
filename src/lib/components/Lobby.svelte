@@ -1,11 +1,15 @@
 <script lang="ts">
+	import { goto } from '$app/navigation';
 	import { raceState } from '$lib/stores/race.svelte.js';
 	import { signaling } from '$lib/signaling.js';
 	import ChatPanel from './ChatPanel.svelte';
 
 	let copied = $state(false);
 
+	const hasGps = $derived(raceState.gpsHasSignal);
+
 	function toggleReady() {
+		if (!hasGps) return;
 		const myPlayer = raceState.myPlayer;
 		if (!myPlayer) return;
 		const newReady = !myPlayer.ready;
@@ -28,6 +32,12 @@
 		}
 	}
 
+	function leaveRace() {
+		signaling.disconnect();
+		raceState.reset();
+		goto('/');
+	}
+
 	function formatDistance(m: number): string {
 		return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${m} m`;
 	}
@@ -45,10 +55,17 @@
 				<span class="distance">{formatDistance(raceState.targetDistance)}</span>
 			</div>
 		</div>
+		{#if !hasGps}
+			<div class="gps-status">
+				<span class="gps-spinner"></span>
+				Waiting for GPS signal...
+			</div>
+		{/if}
 		<div class="actions">
 			<button
 				class="btn btn-secondary btn-sm"
 				onclick={toggleReady}
+				disabled={!hasGps}
 			>
 				{raceState.myPlayer?.ready ? 'Unready' : 'Ready Up'}
 			</button>
@@ -62,6 +79,7 @@
 				</button>
 			{/if}
 		</div>
+		<button class="btn-leave" onclick={leaveRace}>Leave Race</button>
 	</div>
 
 	<div class="players">
@@ -192,6 +210,42 @@
 		color: var(--text-muted);
 		font-weight: 400;
 		font-size: 0.75rem;
+	}
+
+	.gps-status {
+		display: flex;
+		align-items: center;
+		gap: 8px;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+		padding: 0 2px;
+	}
+
+	.gps-spinner {
+		width: 12px;
+		height: 12px;
+		border: 2px solid rgba(255, 255, 255, 0.2);
+		border-top-color: var(--accent);
+		border-radius: 50%;
+		animation: spin 1s linear infinite;
+	}
+
+	.btn-leave {
+		background: none;
+		border: none;
+		color: var(--text-muted);
+		font-size: 0.8rem;
+		padding: 8px;
+		cursor: pointer;
+		text-align: center;
+	}
+
+	.btn-leave:hover {
+		color: var(--text);
+	}
+
+	@keyframes spin {
+		to { transform: rotate(360deg); }
 	}
 
 </style>

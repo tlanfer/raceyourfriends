@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { onMount, onDestroy } from 'svelte';
+	import { goto } from '$app/navigation';
 	import { raceState } from '$lib/stores/race.svelte.js';
 	import { signaling } from '$lib/signaling.js';
 	import { playCountdownBeep } from '$lib/utils/sounds.js';
@@ -7,6 +8,8 @@
 	let secondsLeft = $state(10);
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let lastBeep = -1;
+	let stuckAtZero = $state(false);
+	let stuckTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function cancel() {
 		if (raceState.isGhostRace) {
@@ -18,6 +21,12 @@
 		}
 	}
 
+	function leaveRace() {
+		signaling.disconnect();
+		raceState.reset();
+		goto('/');
+	}
+
 	function updateCountdown() {
 		if (!raceState.startTime) return;
 		const remaining = Math.ceil((raceState.startTime - Date.now()) / 1000);
@@ -26,6 +35,17 @@
 		if (secondsLeft >= 1 && secondsLeft <= 3 && secondsLeft !== lastBeep) {
 			lastBeep = secondsLeft;
 			playCountdownBeep();
+		}
+
+		// Detect stuck at zero (race-started message never arrived)
+		if (secondsLeft <= 0 && !stuckTimer) {
+			stuckTimer = setTimeout(() => {
+				stuckAtZero = true;
+			}, 5000);
+		} else if (secondsLeft > 0 && stuckTimer) {
+			clearTimeout(stuckTimer);
+			stuckTimer = null;
+			stuckAtZero = false;
 		}
 	}
 
@@ -36,6 +56,7 @@
 
 	onDestroy(() => {
 		if (timer) clearInterval(timer);
+		if (stuckTimer) clearTimeout(stuckTimer);
 	});
 </script>
 
@@ -51,6 +72,15 @@
 
 		{#if (raceState.isOwner || raceState.isGhostRace) && secondsLeft > 0}
 			<button class="btn btn-secondary cancel-btn" onclick={cancel}>Cancel</button>
+		{:else if !raceState.isOwner && !raceState.isGhostRace && secondsLeft > 0}
+			<button class="btn btn-secondary cancel-btn" onclick={leaveRace}>Leave Race</button>
+		{/if}
+
+		{#if stuckAtZero}
+			<div class="stuck-notice">
+				<p>Something went wrong</p>
+				<button class="btn btn-secondary cancel-btn" onclick={leaveRace}>Return Home</button>
+			</div>
 		{/if}
 	</div>
 </div>
@@ -88,6 +118,15 @@
 	.cancel-btn {
 		font-size: 1rem;
 		padding: 12px 32px;
+	}
+
+	.stuck-notice {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		gap: 12px;
+		color: var(--text-muted);
+		font-size: 0.9rem;
 	}
 
 	@keyframes pulse {
