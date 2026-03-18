@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { raceState } from '$lib/stores/race.svelte.js';
-	import { signaling } from '$lib/webrtc/signaling.js';
+	import { signaling } from '$lib/signaling.js';
 	import ChatPanel from './ChatPanel.svelte';
 
 	let copied = $state(false);
@@ -193,4 +193,5 @@
 		font-weight: 400;
 		font-size: 0.75rem;
 	}
+
 </style>

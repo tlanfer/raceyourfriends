@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { raceState } from '$lib/stores/race.svelte.js';
 	import { goto } from '$app/navigation';
-	import { signaling } from '$lib/webrtc/signaling.js';
+	import { signaling } from '$lib/signaling.js';
 	import ChatPanel from './ChatPanel.svelte';
 
 	const sorted = $derived(

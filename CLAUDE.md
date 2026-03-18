@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Race Your Friends is a real-time GPS racing app where players compete by physically moving (running/walking/biking). Players join a room via 4-character codes, and once a race starts, the app tracks each player's GPS distance toward a shared target distance. Built with SvelteKit + WebSocket server + WebRTC for peer-to-peer updates.
+Race Your Friends is a real-time GPS racing app where players compete by physically moving (running/walking/biking). Players join a room via 4-character codes, and once a race starts, the app tracks each player's GPS distance toward a shared target distance. Built with SvelteKit + WebSocket server for real-time sync.
 
 ## Commands
 
@@ -25,12 +25,12 @@ Race Your Friends is a real-time GPS racing app where players compete by physica
 ## Architecture
 
 ### Build targets
-The app always builds as static files via `adapter-static` (output: `build-static/`). The WebSocket signaling server is a separate standalone package in `server/`.
+The app always builds as static files via `adapter-static` (output: `build-static/`). The WebSocket server is a separate standalone package in `server/`.
 
 ### Standalone server (`server/`)
 - **`server/src/index.ts`** — Entry point. Creates HTTP server with health check endpoint, attaches WebSocket server.
-- **`server/src/ws.ts`** — WebSocket server handling all signaling: room management, race lifecycle (create/join/ready/countdown/start/finish), RTC signaling relay, chat, emotes, and distance broadcasting. Listens on `/ws` path only.
-- **`server/src/race-rooms.ts`** — In-memory room state management.
+- **`server/src/ws.ts`** — WebSocket server handling all signaling: room management, race lifecycle (create/join/ready/countdown/start/finish), chat, emotes, and aggregated distance broadcasting. Listens on `/ws` path only.
+- **`server/src/race-rooms.ts`** — In-memory room state management (distances, finish status, broadcast timers).
 - **`server/src/race-code.ts`** — Race code generation.
 - **`server/Dockerfile`** — Multi-stage Docker build for deployment.
 
@@ -40,10 +40,7 @@ The app always builds as static files via `adapter-static` (output: `build-stati
 
 ### Client-side
 - **`src/lib/stores/race.svelte.ts`** — Central reactive state using Svelte 5 runes (`$state`). Single `RaceState` class exported as singleton. Manages race phase transitions: `setup → lobby → countdown → racing → finished`.
-- **`src/lib/webrtc/`** — WebRTC layer for peer-to-peer distance updates:
-  - `signaling.ts` — WebSocket client (singleton). On native platforms, uses `VITE_WS_URL` env var; on web, derives URL from `location`.
-  - `peer-manager.ts` — Manages RTCPeerConnection mesh. Uses lexicographic ID ordering to determine which peer initiates offers.
-  - `data-channel.ts` — Broadcasts distance updates every 1s over WebRTC data channels (with WebSocket fallback).
+- **`src/lib/signaling.ts`** — WebSocket client (singleton). On native platforms, uses `VITE_WS_URL` env var; on web, derives URL from `location`.
 - **`src/lib/geo/`** — GPS tracking:
   - `tracker.ts` — `GeoTracker` class with jitter filtering (accuracy threshold 20m, min delta 1m, max speed 50km/h). Uses `navigator.geolocation` on web, `@capgo/background-geolocation` on native via Capacitor platform detection.
   - `distance.ts` — Haversine formula for GPS distance calculation.
@@ -57,7 +54,8 @@ The app always builds as static files via `adapter-static` (output: `build-stati
 ### Key patterns
 - Svelte 5 runes mode is enforced for all non-node_modules files via `vitePlugin.dynamicCompileOptions`
 - Race codes use a restricted character set (no ambiguous chars like 0/O, I/1/L) — see `src/lib/utils/race-code.ts`
-- Distance updates use dual transport: WebRTC peer-to-peer (primary) + WebSocket (fallback), both at 1s intervals
+- Distance sync is WebSocket-only: clients send every 5s, server broadcasts aggregated state every 5s
+- Countdown uses timestamp-based sync: server sends `startTime`, clients compute countdown locally
 - Native platform features (background GPS, keep-awake) are conditionally loaded via `Capacitor.isNativePlatform()`
 
 ## Environment Variables

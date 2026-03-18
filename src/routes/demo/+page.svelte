@@ -83,16 +83,11 @@
 	function startCountdown() {
 		raceState.phase = 'countdown';
 		currentPhase = 'countdown';
-		raceState.countdownValue = 5;
+		raceState.startTime = Date.now() + 5000;
 
-		const countdownInterval = setInterval(() => {
-			raceState.countdownValue--;
-			if (raceState.countdownValue <= 0) {
-				clearInterval(countdownInterval);
-				startRacing();
-			}
-		}, 1000);
-		intervals.push(countdownInterval);
+		timeouts.push(setTimeout(() => {
+			startRacing();
+		}, 5000));
 	}
 
 	function startRacing() {

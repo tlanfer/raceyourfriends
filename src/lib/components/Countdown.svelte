@@ -1,23 +1,49 @@
 <script lang="ts">
+	import { onMount, onDestroy } from 'svelte';
 	import { raceState } from '$lib/stores/race.svelte.js';
-	import { signaling } from '$lib/webrtc/signaling.js';
+	import { signaling } from '$lib/signaling.js';
+	import { playCountdownBeep } from '$lib/utils/sounds.js';
+
+	let secondsLeft = $state(10);
+	let timer: ReturnType<typeof setInterval> | null = null;
+	let lastBeep = -1;
 
 	function cancel() {
 		signaling.send({ type: 'cancel-countdown' });
 	}
+
+	function updateCountdown() {
+		if (!raceState.startTime) return;
+		const remaining = Math.ceil((raceState.startTime - Date.now()) / 1000);
+		secondsLeft = Math.max(0, remaining);
+
+		if (secondsLeft >= 1 && secondsLeft <= 3 && secondsLeft !== lastBeep) {
+			lastBeep = secondsLeft;
+			playCountdownBeep();
+		}
+	}
+
+	onMount(() => {
+		updateCountdown();
+		timer = setInterval(updateCountdown, 100);
+	});
+
+	onDestroy(() => {
+		if (timer) clearInterval(timer);
+	});
 </script>
 
 <div class="countdown-overlay">
 	<div class="content">
-		<div class="number" class:go={raceState.countdownValue <= 0}>
-			{#if raceState.countdownValue > 0}
-				{raceState.countdownValue}
+		<div class="number" class:go={secondsLeft <= 0}>
+			{#if secondsLeft > 0}
+				{secondsLeft}
 			{:else}
 				GO!
 			{/if}
 		</div>
 
-		{#if raceState.isOwner && raceState.countdownValue > 0}
+		{#if raceState.isOwner && secondsLeft > 0}
 			<button class="btn btn-secondary cancel-btn" onclick={cancel}>Cancel</button>
 		{/if}
 	</div>

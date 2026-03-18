@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { tick } from 'svelte';
 	import { raceState } from '$lib/stores/race.svelte.js';
-	import { signaling } from '$lib/webrtc/signaling.js';
+	import { signaling } from '$lib/signaling.js';
 	import { playChatBlip } from '$lib/utils/sounds.js';
 
 	const EMOTES = ['🏃', '💨', '🔥', '😤', '💀', '🥵', '😂', '👋', '💪', '🏆'];
