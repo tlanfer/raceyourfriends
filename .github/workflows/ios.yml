@@ -1,0 +1,38 @@
+name: iOS Build
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Build static SvelteKit app
+        run: npm run build:cap
+        env:
+          VITE_WS_URL: ${{ secrets.VITE_WS_URL }}
+
+      - name: Add and sync Capacitor iOS platform
+        run: npx cap add ios && npx cap sync ios
+
+      - name: Build for iOS Simulator (unsigned)
+        run: |
+          xcodebuild build \
+            -workspace ios/App/App.xcworkspace \
+            -scheme App \
+            -destination 'generic/platform=iOS Simulator' \
+            CODE_SIGNING_ALLOWED=NO
