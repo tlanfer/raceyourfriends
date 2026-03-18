@@ -174,6 +174,19 @@ input { font: inherit; color: inherit; background: none; border: none; }
 .msg-emote { font-size: 1.5rem; vertical-align: middle; }
 .empty-chat { color: var(--text-muted); font-size: 0.8rem; text-align: center; padding: 16px 0; margin: auto 0; }
 
+/* Ghost race */
+.ghost-badge {
+	display: inline-block; font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
+	letter-spacing: 0.08em; padding: 3px 8px; border-radius: 6px;
+	background: rgba(139, 92, 246, 0.2); color: #a78bfa; margin-bottom: 8px;
+}
+.ghost-time { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 12px; }
+.section-label {
+	font-size: 0.8rem; color: var(--text-muted); text-transform: uppercase;
+	letter-spacing: 0.05em; font-weight: 600; margin-bottom: 8px; margin-top: 12px;
+}
+.ghost-progress-bar { background: #a78bfa; }
+
 .hidden { display: none !important; }
 </style>
 </head>
@@ -212,6 +225,20 @@ input { font: inherit; color: inherit; background: none; border: none; }
 		<!-- Racing phase -->
 		<div class="hidden" id="phase-racing">
 			<div class="player-list" id="race-players"></div>
+		</div>
+
+		<!-- Ghost phase -->
+		<div class="hidden" id="phase-ghost">
+			<div class="ghost-badge">Ghost Race</div>
+			<div class="ghost-time" id="ghost-time"></div>
+			<div id="ghost-active-section">
+				<div class="section-label">Currently Running</div>
+				<div class="player-list" id="ghost-active-players"></div>
+			</div>
+			<div id="ghost-completed-section">
+				<div class="section-label">Leaderboard</div>
+				<div class="results" id="ghost-completed-results"></div>
+			</div>
 		</div>
 
 		<!-- Finish phase -->
@@ -255,6 +282,10 @@ input { font: inherit; color: inherit; background: none; border: none; }
 	let startTime = null;
 	let countdownTimer = null;
 	let messages = [];
+	let isGhostRace = false;
+	let ghostRuns = []; // completed runs
+	let ghostActiveRunners = {}; // runnerId -> {name, distance}
+	let ghostExpiresAt = null;
 
 	// DOM refs
 	const joinScreen = document.getElementById('join-screen');
@@ -277,6 +308,12 @@ input { font: inherit; color: inherit; background: none; border: none; }
 	const countdownNumber = document.getElementById('countdown-number');
 	const messagesEl = document.getElementById('messages');
 	const chatPanel = document.getElementById('chat-panel');
+	const phaseGhost = document.getElementById('phase-ghost');
+	const ghostTime = document.getElementById('ghost-time');
+	const ghostActivePlayers = document.getElementById('ghost-active-players');
+	const ghostActiveSection = document.getElementById('ghost-active-section');
+	const ghostCompletedResults = document.getElementById('ghost-completed-results');
+	const ghostCompletedSection = document.getElementById('ghost-completed-section');
 
 	// Helpers
 	function formatDistance(m) {
@@ -473,6 +510,53 @@ input { font: inherit; color: inherit; background: none; border: none; }
 				});
 				renderMessages();
 				break;
+
+			// Ghost race messages
+			case 'ghost-race-watched':
+				isGhostRace = true;
+				raceName = msg.raceName;
+				raceCode = msg.code;
+				targetDistance = msg.targetDistance;
+				ghostExpiresAt = msg.expiresAt;
+				ghostRuns = msg.runs || [];
+				ghostActiveRunners = {};
+				for (const r of (msg.activeRunners || [])) {
+					ghostActiveRunners[r.runnerId] = { name: r.runnerName, distance: r.distance || 0 };
+				}
+				messages = msg.messages || [];
+
+				raceNameEl.textContent = raceName;
+				raceCodeEl.textContent = raceCode;
+				raceDistEl.textContent = formatDistance(targetDistance);
+
+				hide(joinScreen);
+				show(raceScreen);
+				setPhase('ghost');
+				renderMessages();
+				break;
+
+			case 'ghost-run-sample':
+				if (!ghostActiveRunners[msg.runnerId]) {
+					ghostActiveRunners[msg.runnerId] = { name: msg.runnerName || msg.runnerId, distance: 0 };
+				}
+				ghostActiveRunners[msg.runnerId].distance = msg.distance;
+				if (phase === 'ghost') renderGhost();
+				break;
+
+			case 'ghost-runner-starting':
+				if (!ghostActiveRunners[msg.runnerId]) {
+					ghostActiveRunners[msg.runnerId] = { name: msg.runnerName, distance: 0 };
+				}
+				if (phase === 'ghost') renderGhost();
+				break;
+
+			case 'ghost-run-complete':
+				if (msg.run) {
+					ghostRuns.push(msg.run);
+					delete ghostActiveRunners[msg.run.runnerId];
+				}
+				if (phase === 'ghost') renderGhost();
+				break;
 		}
 	}
 
@@ -483,6 +567,7 @@ input { font: inherit; color: inherit; background: none; border: none; }
 		hide(phaseRacing);
 		hide(phaseFinished);
 		hide(countdownOverlay);
+		hide(phaseGhost);
 
 		if (countdownTimer) {
 			clearInterval(countdownTimer);
@@ -510,6 +595,11 @@ input { font: inherit; color: inherit; background: none; border: none; }
 				show(phaseFinished);
 				hide(chatPanel);
 				renderFinished();
+				break;
+			case 'ghost':
+				show(phaseGhost);
+				show(chatPanel);
+				renderGhost();
 				break;
 		}
 	}
@@ -615,6 +705,85 @@ input { font: inherit; color: inherit; background: none; border: none; }
 			}
 		} else {
 			hide(stillRacing);
+		}
+	}
+
+	function formatDuration(startedAt, finishedAt) {
+		const ms = finishedAt - startedAt;
+		const totalSeconds = Math.floor(ms / 1000);
+		const minutes = Math.floor(totalSeconds / 60);
+		const seconds = totalSeconds % 60;
+		return minutes + ':' + String(seconds).padStart(2, '0');
+	}
+
+	function renderGhost() {
+		// Time remaining
+		if (ghostExpiresAt) {
+			const diff = ghostExpiresAt - Date.now();
+			if (diff <= 0) {
+				ghostTime.textContent = 'Race closed';
+			} else {
+				const days = Math.floor(diff / (24 * 60 * 60 * 1000));
+				const hours = Math.floor((diff % (24 * 60 * 60 * 1000)) / (60 * 60 * 1000));
+				if (days > 0) ghostTime.textContent = days + 'd ' + hours + 'h remaining';
+				else ghostTime.textContent = hours + 'h remaining';
+			}
+		}
+
+		// Active runners
+		const activeIds = Object.keys(ghostActiveRunners);
+		if (activeIds.length > 0) {
+			show(ghostActiveSection);
+			ghostActivePlayers.innerHTML = '';
+			const sorted = activeIds
+				.map(id => ({ id, ...ghostActiveRunners[id] }))
+				.sort((a, b) => b.distance - a.distance);
+			for (const r of sorted) {
+				const progress = Math.min(100, (r.distance / targetDistance) * 100);
+				const card = document.createElement('div');
+				card.className = 'player-card card';
+				card.innerHTML =
+					'<div class="player-card-header">' +
+						'<span class="player-name">' + escapeHtml(r.name) + '</span>' +
+						'<span class="player-dist">' + formatDistance(r.distance) + '</span>' +
+					'</div>' +
+					'<div class="progress-track">' +
+						'<div class="progress-bar ghost-progress-bar" style="width:' + progress + '%"></div>' +
+					'</div>';
+				ghostActivePlayers.appendChild(card);
+			}
+		} else {
+			hide(ghostActiveSection);
+		}
+
+		// Completed runs
+		const completed = ghostRuns
+			.filter(r => r.finishedAt != null)
+			.sort((a, b) => {
+				const aDur = a.finishedAt - a.startedAt;
+				const bDur = b.finishedAt - b.startedAt;
+				return aDur - bDur;
+			});
+
+		if (completed.length > 0) {
+			show(ghostCompletedSection);
+			ghostCompletedResults.innerHTML = '';
+			for (let i = 0; i < completed.length; i++) {
+				const r = completed[i];
+				const row = document.createElement('div');
+				row.className = 'result-row card';
+				row.innerHTML =
+					'<span class="medal">' + medal(i + 1) + '</span>' +
+					'<div class="result-info">' +
+						'<span class="result-name">' + escapeHtml(r.runnerName) + '</span>' +
+						'<span class="result-dist">' + formatDistance(r.finalDistance) +
+							' \\u00B7 ' + formatDuration(r.startedAt, r.finishedAt) + '</span>' +
+					'</div>' +
+					'<span class="result-order">#' + (i + 1) + '</span>';
+				ghostCompletedResults.appendChild(row);
+			}
+		} else {
+			hide(ghostCompletedSection);
 		}
 	}
 

@@ -223,7 +223,11 @@ function handleJoinRace(ws: WebSocket, state: ClientState, msg: any): void {
 
 function handleWatchRace(ws: WebSocket, state: ClientState, msg: any): void {
 	const code = (msg.code || '').toUpperCase();
-	const room = getRoom(code);
+	let room: RaceRoom | undefined | null = getRoom(code);
+
+	if (!room) {
+		room = restoreGhostRoomFromDisk(code);
+	}
 
 	if (!room) {
 		send(ws, { type: 'error', message: 'Race not found' });
@@ -235,7 +239,41 @@ function handleWatchRace(ws: WebSocket, state: ClientState, msg: any): void {
 
 	addSpectatorToRoom(room, { id: state.id, ws });
 
-	// Build current distance info for players
+	if (room.mode === 'ghost') {
+		// Build ghost-specific spectator data
+		const runs = room.completedRuns.map((r) => ({
+			runnerId: r.runnerId,
+			runnerName: r.runnerName,
+			finalDistance: r.finalDistance,
+			finishedAt: r.finishedAt,
+			startedAt: r.startedAt
+		}));
+
+		const activeRunners = room.activeRuns
+			? Array.from(room.activeRuns.values()).map((r) => ({
+					runnerId: r.runnerId,
+					runnerName: r.runnerName,
+					distance: r.samples.length > 0 ? r.samples[r.samples.length - 1].distance : 0
+				}))
+			: [];
+
+		const expired = room.expiresAt != null && Date.now() > room.expiresAt;
+
+		send(ws, {
+			type: 'ghost-race-watched',
+			code,
+			raceName: room.name,
+			targetDistance: room.targetDistance,
+			expiresAt: room.expiresAt,
+			runs,
+			activeRunners,
+			expired,
+			messages: room.messages
+		});
+		return;
+	}
+
+	// Live race spectator data
 	const playersWithDistance = Array.from(room.players.keys()).map((id) => ({
 		id,
 		distance: room.distances.get(id) ?? 0,
@@ -612,21 +650,29 @@ function handleGhostDistance(ws: WebSocket, state: ClientState, msg: any): void 
 	activeRun.samples.push(sample);
 
 	// Forward to other active runners as live ghost update
+	const sampleMsg = JSON.stringify({
+		type: 'ghost-run-sample',
+		runnerId: state.id,
+		runnerName: activeRun.runnerName,
+		elapsed_ms: sample.elapsed_ms,
+		distance: sample.distance
+	});
+
 	if (room.activeRuns) {
-		for (const [id, otherRun] of room.activeRuns) {
+		for (const [id] of room.activeRuns) {
 			if (id !== state.id) {
 				const otherPlayer = room.players.get(id);
 				if (otherPlayer && otherPlayer.ws.readyState === 1) {
-					otherPlayer.ws.send(
-						JSON.stringify({
-							type: 'ghost-run-sample',
-							runnerId: state.id,
-							elapsed_ms: sample.elapsed_ms,
-							distance: sample.distance
-						})
-					);
+					otherPlayer.ws.send(sampleMsg);
 				}
 			}
+		}
+	}
+
+	// Also forward to spectators
+	for (const [, spectator] of room.spectators) {
+		if (spectator.ws.readyState === 1) {
+			spectator.ws.send(sampleMsg);
 		}
 	}
 
