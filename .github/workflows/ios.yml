@@ -46,6 +46,37 @@ jobs:
             echo "track=beta" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Install signing certificate and provisioning profile
+        env:
+          CERTIFICATE_BASE64: ${{ secrets.APPLE_CERTIFICATE_P12_BASE64 }}
+          CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          PROVISIONING_PROFILE_BASE64: ${{ secrets.APPLE_PROVISIONING_PROFILE_BASE64 }}
+        run: |
+          # Create temporary keychain
+          KEYCHAIN_PATH="$RUNNER_TEMP/app-signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(openssl rand -hex 16)"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # Import certificate
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          echo "$CERTIFICATE_BASE64" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -P "$CERTIFICATE_PASSWORD" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH"
+
+          # Install provisioning profile
+          PROFILE_PATH="$RUNNER_TEMP/profile.mobileprovision"
+          echo "$PROVISIONING_PROFILE_BASE64" | base64 --decode > "$PROFILE_PATH"
+          mkdir -p ~/Library/MobileDevice/Provisioning\ Profiles
+          PROFILE_UUID=$(/usr/libexec/PlistBuddy -c "Print UUID" /dev/stdin <<< "$(security cms -D -i "$PROFILE_PATH")")
+          cp "$PROFILE_PATH" ~/Library/MobileDevice/Provisioning\ Profiles/"$PROFILE_UUID".mobileprovision
+          echo "PROVISIONING_PROFILE_UUID=$PROFILE_UUID" >> "$GITHUB_ENV"
+
       - name: Install App Store Connect API key
         env:
           API_KEY_BASE64: ${{ secrets.APP_STORE_CONNECT_API_KEY_BASE64 }}
@@ -61,27 +92,41 @@ jobs:
             -scheme App
 
       - name: Archive for distribution
-        env:
-          API_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
-          API_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
         run: |
           xcodebuild archive \
             -project ios/App/App.xcodeproj \
             -scheme App \
             -destination 'generic/platform=iOS' \
             -archivePath build/RaceYourFriends.xcarchive \
-            -allowProvisioningUpdates \
-            -authenticationKeyPath ~/private_keys/AuthKey_${API_KEY_ID}.p8 \
-            -authenticationKeyID "$API_KEY_ID" \
-            -authenticationKeyIssuerID "$API_ISSUER_ID" \
             DEVELOPMENT_TEAM="${{ secrets.APPLE_TEAM_ID }}" \
+            CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="Apple Distribution" \
+            PROVISIONING_PROFILE_SPECIFIER="$PROVISIONING_PROFILE_UUID" \
             MARKETING_VERSION="${{ steps.version.outputs.marketing_version }}" \
             CURRENT_PROJECT_VERSION="${{ steps.version.outputs.build_number }}"
 
       - name: Generate ExportOptions.plist
         run: |
-          printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' '<plist version="1.0">' '<dict>' '  <key>method</key>' '  <string>app-store-connect</string>' '  <key>destination</key>' '  <string>upload</string>' '</dict>' '</plist>' > ExportOptions.plist
+          printf '%s\n' \
+            '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0">' \
+            '<dict>' \
+            '  <key>method</key>' \
+            '  <string>app-store-connect</string>' \
+            '  <key>teamID</key>' \
+            '  <string>${{ secrets.APPLE_TEAM_ID }}</string>' \
+            '  <key>signingStyle</key>' \
+            '  <string>manual</string>' \
+            '  <key>provisioningProfiles</key>' \
+            '  <dict>' \
+            '    <key>com.raceyourfriends.app</key>' \
+            '    <string>'"$PROVISIONING_PROFILE_UUID"'</string>' \
+            '  </dict>' \
+            '  <key>destination</key>' \
+            '  <string>upload</string>' \
+            '</dict>' \
+            '</plist>' > ExportOptions.plist
 
       - name: Export and upload to TestFlight
         env:
@@ -92,7 +137,6 @@ jobs:
             -archivePath build/RaceYourFriends.xcarchive \
             -exportPath build/export \
             -exportOptionsPlist ExportOptions.plist \
-            -allowProvisioningUpdates \
             -authenticationKeyPath ~/private_keys/AuthKey_${API_KEY_ID}.p8 \
             -authenticationKeyID "$API_KEY_ID" \
             -authenticationKeyIssuerID "$API_ISSUER_ID"
@@ -103,7 +147,12 @@ jobs:
           name: RaceYourFriends-${{ github.ref_name }}
           path: build/export/*.ipa
 
+      - name: Clean up keychain
+        if: always()
+        run: security delete-keychain "$RUNNER_TEMP/app-signing.keychain-db" 2>/dev/null || true
+
       - name: Summary
+        if: always()
         run: |
           TRACK="${{ steps.version.outputs.track }}"
           echo "## iOS TestFlight Upload" >> "$GITHUB_STEP_SUMMARY"
@@ -112,7 +161,7 @@ jobs:
           echo "- **Version:** ${{ steps.version.outputs.marketing_version }} (${{ steps.version.outputs.build_number }})" >> "$GITHUB_STEP_SUMMARY"
           echo "" >> "$GITHUB_STEP_SUMMARY"
           if [ "$TRACK" = "rc" ]; then
-            echo "### ⚠️ Action required: Submit for External Beta Review" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Action required: Submit for External Beta Review" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "This is an **RC build**. To distribute to external testers:" >> "$GITHUB_STEP_SUMMARY"
             echo "1. Go to [App Store Connect](https://appstoreconnect.apple.com) → your app → TestFlight" >> "$GITHUB_STEP_SUMMARY"
@@ -120,7 +169,7 @@ jobs:
             echo "3. Select the build under your **external testing group**" >> "$GITHUB_STEP_SUMMARY"
             echo "4. Click **Submit for Review**" >> "$GITHUB_STEP_SUMMARY"
           else
-            echo "### ✅ Internal testers will receive this build automatically" >> "$GITHUB_STEP_SUMMARY"
+            echo "### Internal testers will receive this build automatically" >> "$GITHUB_STEP_SUMMARY"
             echo "" >> "$GITHUB_STEP_SUMMARY"
             echo "Internal testers (App Store Connect team members) get access as soon as processing completes (~5-30 min)." >> "$GITHUB_STEP_SUMMARY"
           fi
