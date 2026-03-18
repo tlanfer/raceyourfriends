@@ -1,8 +1,10 @@
-name: Android APK Build
+name: Android Internal Testing
 
 on:
   push:
-    tags: ['v*']
+    tags:
+      - 'v*-beta*'
+      - 'v*-rc*'
 
 permissions:
   contents: write
@@ -36,21 +38,51 @@ jobs:
 
       - uses: android-actions/setup-android@v3
 
-      - name: Build debug APK
-        working-directory: android
-        run: ./gradlew assembleDebug
-
-      - uses: actions/upload-artifact@v7
-        with:
-          name: app-debug
-          path: android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Create release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract version from tag
+        id: version
         run: |
-          gh release create "${{ github.ref_name }}" \
-            android/app/build/outputs/apk/debug/app-debug.apk \
-            --title "${{ github.ref_name }}" \
-            --notes "Release ${{ github.ref_name }}" \
-            --latest
+          TAG="${GITHUB_REF_NAME}"
+          # v1.0.0-beta.1 → 1.0.0
+          VERSION_NAME=$(echo "$TAG" | sed 's/^v//' | sed 's/-.*//')
+          echo "version_name=$VERSION_NAME" >> "$GITHUB_OUTPUT"
+          echo "version_code=$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+
+      - name: Decode keystore
+        run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
+
+      - name: Build release AAB
+        working-directory: android
+        env:
+          ANDROID_KEYSTORE_PATH: release.keystore
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          ANDROID_VERSION_NAME: ${{ steps.version.outputs.version_name }}
+          ANDROID_VERSION_CODE: ${{ steps.version.outputs.version_code }}
+        run: ./gradlew bundleRelease
+
+      - name: Upload AAB artifact
+        uses: actions/upload-artifact@v7
+        with:
+          name: app-release-${{ github.ref_name }}
+          path: android/app/build/outputs/bundle/release/app-release.aab
+
+      - name: Upload to Google Play Internal Testing
+        uses: r0adkll/upload-google-play@v1
+        with:
+          serviceAccountJsonPlainText: ${{ secrets.GOOGLE_PLAY_SERVICE_ACCOUNT_JSON }}
+          packageName: com.raceyourfriends.app
+          releaseFiles: android/app/build/outputs/bundle/release/app-release.aab
+          track: internal
+          releaseName: ${{ github.ref_name }}
+
+      - name: Summary
+        run: |
+          echo "## Android Internal Testing Upload" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Tag:** \`${{ github.ref_name }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **Version:** ${{ steps.version.outputs.version_name }} (${{ steps.version.outputs.version_code }})" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "### ✅ Uploaded to Internal Testing track" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "Testers on the internal testing list can install via the opt-in link." >> "$GITHUB_STEP_SUMMARY"

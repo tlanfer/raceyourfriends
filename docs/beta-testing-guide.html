@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Race Your Friends — Beta Testing Distribution Guide</title>
+<style>
+  :root {
+    --bg: #131210;
+    --surface: #1c1a17;
+    --border: #2a2825;
+    --text: #e8e6e3;
+    --text-muted: #9a9790;
+    --ios: #007AFF;
+    --ios-bg: rgba(0, 122, 255, 0.08);
+    --ios-border: rgba(0, 122, 255, 0.25);
+    --android: #3DDC84;
+    --android-bg: rgba(61, 220, 132, 0.08);
+    --android-border: rgba(61, 220, 132, 0.25);
+    --warn: #F5A623;
+    --warn-bg: rgba(245, 166, 35, 0.08);
+    --code-bg: #0d0c0b;
+    --link: #6bb3ff;
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    line-height: 1.7;
+    padding: 2rem 1rem;
+  }
+
+  .container { max-width: 900px; margin: 0 auto; }
+
+  h1 { font-size: 2.2rem; font-weight: 700; margin-bottom: 0.5rem; }
+  h1 span { opacity: 0.5; font-weight: 400; }
+
+  .subtitle { color: var(--text-muted); font-size: 1.1rem; margin-bottom: 2rem; }
+
+  .project-table { width: 100%; border-collapse: collapse; margin-bottom: 3rem; font-size: 0.95rem; }
+  .project-table td { padding: 0.5rem 1rem; border-bottom: 1px solid var(--border); }
+  .project-table td:first-child { color: var(--text-muted); width: 180px; font-weight: 500; }
+  .project-table code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+
+  h2 { font-size: 1.6rem; margin: 3rem 0 1rem; padding-bottom: 0.5rem; border-bottom: 2px solid var(--border); }
+  h2.ios { border-color: var(--ios); color: var(--ios); }
+  h2.android { border-color: var(--android); color: var(--android); }
+
+  h3 { font-size: 1.2rem; margin: 2rem 0 0.75rem; }
+
+  .step-num {
+    display: inline-block; width: 28px; height: 28px; line-height: 28px;
+    text-align: center; border-radius: 50%; font-size: 0.85rem; font-weight: 700; margin-right: 0.5rem;
+  }
+
+  h3.ios .step-num { background: var(--ios); color: #fff; }
+  h3.android .step-num { background: var(--android); color: #000; }
+
+  p { margin-bottom: 1rem; }
+  a { color: var(--link); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  code, pre { font-family: 'SF Mono', 'Cascadia Code', 'Fira Code', Consolas, monospace; }
+  code { background: var(--code-bg); padding: 0.15rem 0.4rem; border-radius: 4px; font-size: 0.9em; }
+
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1rem 1.25rem; overflow-x: auto; margin-bottom: 1rem; font-size: 0.88rem; line-height: 1.6;
+  }
+  pre code { background: none; padding: 0; }
+
+  .screenshot { margin: 1.5rem 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .screenshot img { width: 100%; display: block; }
+  .screenshot figcaption { padding: 0.5rem 1rem; background: var(--surface); color: var(--text-muted); font-size: 0.85rem; }
+
+  .note {
+    background: var(--surface); border-left: 3px solid var(--text-muted);
+    padding: 1rem 1.25rem; margin: 1rem 0; border-radius: 0 8px 8px 0; font-size: 0.95rem;
+  }
+  .note.ios { border-left-color: var(--ios); background: var(--ios-bg); }
+  .note.android { border-left-color: var(--android); background: var(--android-bg); }
+  .note.warn { border-left-color: var(--warn); background: var(--warn-bg); }
+  .note strong { display: block; margin-bottom: 0.25rem; }
+
+  .toc {
+    background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+    padding: 1.5rem 2rem; margin-bottom: 2rem;
+  }
+  .toc h2 { margin: 0 0 1rem; padding: 0; border: none; font-size: 1.2rem; color: var(--text); }
+  .toc ol { padding-left: 1.25rem; }
+  .toc li { margin-bottom: 0.3rem; }
+  .toc .section-label { font-weight: 600; margin-top: 0.75rem; display: block; }
+  .toc .section-label.ios { color: var(--ios); }
+  .toc .section-label.android { color: var(--android); }
+
+  ul, ol { padding-left: 1.5rem; margin-bottom: 1rem; }
+  li { margin-bottom: 0.4rem; }
+
+  hr { border: none; border-top: 1px solid var(--border); margin: 3rem 0; }
+
+  table.secrets { width: 100%; border-collapse: collapse; margin: 1rem 0 1.5rem; font-size: 0.9rem; }
+  table.secrets th { text-align: left; padding: 0.6rem 0.75rem; border-bottom: 2px solid var(--border); color: var(--text-muted); font-weight: 600; }
+  table.secrets td { padding: 0.5rem 0.75rem; border-bottom: 1px solid var(--border); vertical-align: top; }
+  table.secrets code { font-size: 0.85em; white-space: nowrap; }
+
+  .tag-example { display: inline-block; background: var(--surface); border: 1px solid var(--border); border-radius: 6px; padding: 0.2rem 0.6rem; margin: 0.1rem 0.2rem; font-family: monospace; font-size: 0.9em; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>Race Your Friends <span>/ Beta Testing Guide</span></h1>
+<p class="subtitle">CI/CD setup for distributing builds to beta testers via TestFlight (iOS) and Google Play Internal Testing (Android). Everything runs through GitHub Actions — no local builds needed.</p>
+
+<table class="project-table">
+  <tr><td>App ID</td><td><code>com.raceyourfriends.app</code></td></tr>
+  <tr><td>App Name</td><td>Race Your Friends</td></tr>
+  <tr><td>Capacitor</td><td>8.2</td></tr>
+  <tr><td>Web Build Output</td><td><code>build-static/</code></td></tr>
+</table>
+
+<!-- How it works -->
+<h2>How It Works</h2>
+
+<p>Push a git tag to trigger the CI pipelines:</p>
+
+<table class="secrets">
+  <tr><th>Tag Pattern</th><th>iOS</th><th>Android</th></tr>
+  <tr>
+    <td><span class="tag-example">v1.0.0-beta.1</span></td>
+    <td>Upload to TestFlight &rarr; <strong>internal testers</strong> get it automatically</td>
+    <td>Upload to Play Store <strong>internal testing</strong> track</td>
+  </tr>
+  <tr>
+    <td><span class="tag-example">v1.0.0-rc.1</span></td>
+    <td>Upload to TestFlight &rarr; you manually submit for <strong>external beta review</strong></td>
+    <td>Upload to Play Store <strong>internal testing</strong> track</td>
+  </tr>
+</table>
+
+<p>Version numbers are derived from the tag automatically. <code>v1.0.0-beta.3</code> sets the marketing version to <code>1.0.0</code> and the build number to the GitHub Actions run number (always incrementing).</p>
+
+<nav class="toc">
+  <h2>Table of Contents</h2>
+  <span class="section-label ios">Part 1: iOS / TestFlight</span>
+  <ol>
+    <li><a href="#ios-1">Create Apple Developer account</a></li>
+    <li><a href="#ios-2">Create the app in App Store Connect</a></li>
+    <li><a href="#ios-3">Generate an App Store Connect API key</a></li>
+    <li><a href="#ios-4">Add GitHub secrets</a></li>
+    <li><a href="#ios-5">Set up TestFlight testers</a></li>
+  </ol>
+  <span class="section-label android">Part 2: Android / Google Play</span>
+  <ol>
+    <li><a href="#android-1">Create Google Play Developer account</a></li>
+    <li><a href="#android-2">Generate a release keystore</a></li>
+    <li><a href="#android-3">Create the app in Google Play Console</a></li>
+    <li><a href="#android-4">Create a Google Play service account</a></li>
+    <li><a href="#android-5">Add GitHub secrets</a></li>
+    <li><a href="#android-6">Set up internal testers</a></li>
+  </ol>
+</nav>
+
+<!-- ============================================================ -->
+<!-- iOS -->
+<!-- ============================================================ -->
+
+<h2 class="ios" id="ios">Part 1: iOS / TestFlight</h2>
+
+<h3 class="ios" id="ios-1"><span class="step-num">1</span> Create Apple Developer Account</h3>
+
+<p>Enroll in the <a href="https://developer.apple.com/programs/enroll/">Apple Developer Program</a> ($99/year). This is required for code signing and TestFlight.</p>
+
+<figure class="screenshot">
+  <img src="screenshots/apple-developer-enroll.png" alt="Apple Developer Program enrollment page">
+  <figcaption>Apple Developer Program enrollment page</figcaption>
+</figure>
+
+<p>Enrollment can take up to 48 hours. Once approved, you'll have access to App Store Connect and the developer portal.</p>
+
+<!-- iOS Step 2 -->
+<h3 class="ios" id="ios-2"><span class="step-num">2</span> Create the App in App Store Connect</h3>
+
+<p>Go to <a href="https://appstoreconnect.apple.com/">App Store Connect</a> &rarr; <strong>My Apps</strong> &rarr; <strong>+</strong> &rarr; <strong>New App</strong>:</p>
+
+<table class="secrets">
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td>Platform</td><td>iOS</td></tr>
+  <tr><td>Name</td><td><code>Race Your Friends</code></td></tr>
+  <tr><td>Primary Language</td><td>English (U.S.)</td></tr>
+  <tr><td>Bundle ID</td><td>Register new &rarr; <code>com.raceyourfriends.app</code> (Explicit)</td></tr>
+  <tr><td>SKU</td><td><code>raceyourfriends</code></td></tr>
+</table>
+
+<figure class="screenshot">
+  <img src="screenshots/app-store-connect.png" alt="App Store Connect">
+  <figcaption>App Store Connect</figcaption>
+</figure>
+
+<div class="note ios">
+  <strong>Bundle ID must be exactly <code>com.raceyourfriends.app</code></strong> — this matches the <code>appId</code> in <code>capacitor.config.ts</code>. If you use a different Bundle ID, the build will fail signing.
+</div>
+
+<p>When registering the Bundle ID, enable the <strong>Location Services</strong> capability (required for GPS tracking).</p>
+
+<!-- iOS Step 3 -->
+<h3 class="ios" id="ios-3"><span class="step-num">3</span> Generate an App Store Connect API Key</h3>
+
+<p>The CI pipeline uses an API key (instead of certificates/profiles) for automatic code signing and upload. This is the simplest approach — Xcode manages certificates and provisioning profiles automatically via the API key.</p>
+
+<ol>
+  <li>Go to <a href="https://appstoreconnect.apple.com/access/integrations/api">App Store Connect &rarr; Users and Access &rarr; Integrations &rarr; App Store Connect API</a></li>
+  <li>Click <strong>Generate API Key</strong> (or <strong>+</strong>)</li>
+  <li>Name: <code>GitHub Actions</code></li>
+  <li>Access: <strong>App Manager</strong> (needs permission to manage signing and upload builds)</li>
+  <li>Click <strong>Generate</strong></li>
+</ol>
+
+<p>You'll get three values. Save all of them — the <code>.p8</code> file can only be downloaded once:</p>
+
+<table class="secrets">
+  <tr><th>Value</th><th>Where to find it</th><th>Example</th></tr>
+  <tr><td><strong>Issuer ID</strong></td><td>Top of the API Keys page</td><td><code>69a6de7e-....</code></td></tr>
+  <tr><td><strong>Key ID</strong></td><td>In the key row</td><td><code>2X9R4HXF34</code></td></tr>
+  <tr><td><strong>API Key file</strong></td><td>Download the <code>.p8</code> file</td><td><code>AuthKey_2X9R4HXF34.p8</code></td></tr>
+</table>
+
+<p>Base64-encode the <code>.p8</code> file for storage as a GitHub secret:</p>
+<pre><code># macOS/Linux
+base64 -i AuthKey_XXXXXXXX.p8
+
+# Windows (PowerShell)
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("AuthKey_XXXXXXXX.p8"))</code></pre>
+
+<!-- iOS Step 4 -->
+<h3 class="ios" id="ios-4"><span class="step-num">4</span> Add GitHub Secrets</h3>
+
+<p>Go to your GitHub repo &rarr; <strong>Settings</strong> &rarr; <strong>Secrets and variables</strong> &rarr; <strong>Actions</strong>. Add these repository secrets:</p>
+
+<table class="secrets">
+  <tr><th>Secret Name</th><th>Value</th></tr>
+  <tr><td><code>APP_STORE_CONNECT_KEY_ID</code></td><td>The Key ID from step 3 (e.g. <code>2X9R4HXF34</code>)</td></tr>
+  <tr><td><code>APP_STORE_CONNECT_ISSUER_ID</code></td><td>The Issuer ID from step 3</td></tr>
+  <tr><td><code>APP_STORE_CONNECT_API_KEY_BASE64</code></td><td>Base64-encoded contents of the <code>.p8</code> file</td></tr>
+  <tr><td><code>VITE_WS_URL</code></td><td>Your production WebSocket URL (e.g. <code>wss://your-server.example.com/ws</code>) — likely already set</td></tr>
+</table>
+
+<div class="note ios">
+  <strong>That's all the iOS CI needs.</strong> The API key lets Xcode automatically create and manage distribution certificates and provisioning profiles on the CI runner. No manual certificate or profile management required.
+</div>
+
+<!-- iOS Step 5 -->
+<h3 class="ios" id="ios-5"><span class="step-num">5</span> Set Up TestFlight Testers</h3>
+
+<h4>Internal Testing (beta tags)</h4>
+<p>Internal testers are members of your App Store Connect team. They get <strong>every build automatically</strong> — no review needed.</p>
+<ol>
+  <li>In App Store Connect &rarr; <strong>Users and Access</strong></li>
+  <li>Add team members by email (they must have Apple IDs)</li>
+  <li>Give them any role (e.g., Marketing, Developer)</li>
+  <li>Go to your app &rarr; <strong>TestFlight</strong> &rarr; <strong>Internal Group</strong></li>
+  <li>Create a group (e.g., "Core Team") and add your team members</li>
+  <li>They'll get an email to install TestFlight and the app</li>
+</ol>
+
+<figure class="screenshot">
+  <img src="screenshots/testflight.png" alt="TestFlight">
+  <figcaption>TestFlight — Apple's beta distribution platform</figcaption>
+</figure>
+
+<p>Up to <strong>100 internal testers</strong>. Builds appear in TestFlight within 5-30 minutes of upload.</p>
+
+<h4>External Testing (RC tags)</h4>
+<p>For wider distribution (up to 10,000 testers), you need an external testing group. Builds require <strong>Beta App Review</strong> (usually 24-48 hours the first time, faster after that).</p>
+<ol>
+  <li>Go to your app &rarr; <strong>TestFlight</strong> &rarr; click <strong>+</strong> next to <strong>External Groups</strong></li>
+  <li>Name the group (e.g., "Beta Testers")</li>
+  <li>Add testers by email or enable a <strong>Public Link</strong></li>
+</ol>
+
+<p>When a build from an RC tag is uploaded, the CI job summary will remind you to submit it for external review. In App Store Connect:</p>
+<ol>
+  <li>Go to your app &rarr; <strong>TestFlight</strong></li>
+  <li>Wait for the build to finish processing</li>
+  <li>Select the build under your external group</li>
+  <li>Fill in the "What to Test" field and compliance information</li>
+  <li>Click <strong>Submit for Review</strong></li>
+</ol>
+
+<hr>
+
+<!-- ============================================================ -->
+<!-- Android -->
+<!-- ============================================================ -->
+
+<h2 class="android" id="android">Part 2: Android / Google Play</h2>
+
+<h3 class="android" id="android-1"><span class="step-num">1</span> Create Google Play Developer Account</h3>
+
+<p>Register at <a href="https://play.google.com/console/signup">Google Play Console</a> ($25 one-time fee). Identity verification may take several days for new accounts.</p>
+
+<figure class="screenshot">
+  <img src="screenshots/google-play-console.png" alt="Google Play Console signup">
+  <figcaption>Google Play Console signup</figcaption>
+</figure>
+
+<!-- Android Step 2 -->
+<h3 class="android" id="android-2"><span class="step-num">2</span> Generate a Release Keystore</h3>
+
+<p>Run this <strong>once</strong> on any machine. The keystore signs your app — you'll need the same keystore for every future release.</p>
+
+<pre><code>keytool -genkeypair -v \
+  -storetype PKCS12 \
+  -keystore raceyourfriends-release.keystore \
+  -alias raceyourfriends \
+  -keyalg RSA \
+  -keysize 2048 \
+  -validity 10000</code></pre>
+
+<p>You'll be prompted for a password and identity details. Remember the password and alias.</p>
+
+<p>Then base64-encode it for GitHub:</p>
+<pre><code># macOS/Linux
+base64 -i raceyourfriends-release.keystore
+
+# Windows (PowerShell)
+[Convert]::ToBase64String([IO.File]::ReadAllBytes("raceyourfriends-release.keystore"))</code></pre>
+
+<figure class="screenshot">
+  <img src="screenshots/android-app-signing.png" alt="Android app signing documentation">
+  <figcaption>Android documentation: App signing</figcaption>
+</figure>
+
+<div class="note warn">
+  <strong>Store the keystore file and password securely (e.g., password manager).</strong> If you lose the keystore, you cannot push updates to the same app listing. Do NOT commit it to git.
+</div>
+
+<!-- Android Step 3 -->
+<h3 class="android" id="android-3"><span class="step-num">3</span> Create the App in Google Play Console</h3>
+
+<ol>
+  <li>Go to <a href="https://play.google.com/console/">Google Play Console</a> &rarr; <strong>Create app</strong></li>
+</ol>
+
+<table class="secrets">
+  <tr><th>Field</th><th>Value</th></tr>
+  <tr><td>App name</td><td><code>Race Your Friends</code></td></tr>
+  <tr><td>Default language</td><td>English (United States)</td></tr>
+  <tr><td>App or game</td><td>Game</td></tr>
+  <tr><td>Free or paid</td><td>Free</td></tr>
+</table>
+
+<p>Accept the declarations and create the app. You'll need to fill in the content rating questionnaire and a few other setup steps before you can publish to any track — Google Play Console will guide you through what's missing.</p>
+
+<div class="note android">
+  <strong>Opt in to Google Play App Signing</strong> when prompted. This lets Google manage your distribution key while you keep an upload key. It's the recommended setup and is required for new apps.
+</div>
+
+<!-- Android Step 4 -->
+<h3 class="android" id="android-4"><span class="step-num">4</span> Create a Google Play Service Account</h3>
+
+<p>The CI pipeline needs API access to upload builds to Google Play. This requires a Google Cloud service account linked to Play Console.</p>
+
+<ol>
+  <li>Go to <a href="https://console.cloud.google.com/">Google Cloud Console</a></li>
+  <li>Create a project (or use an existing one)</li>
+  <li>Enable the <strong>Google Play Android Developer API</strong></li>
+  <li>Go to <strong>IAM &amp; Admin</strong> &rarr; <strong>Service Accounts</strong> &rarr; <strong>Create Service Account</strong></li>
+  <li>Name it (e.g., <code>github-actions-play-upload</code>), no roles needed in GCP</li>
+  <li>Click the service account &rarr; <strong>Keys</strong> &rarr; <strong>Add Key</strong> &rarr; <strong>Create new key</strong> &rarr; <strong>JSON</strong></li>
+  <li>Download the JSON key file — this is your <code>GOOGLE_PLAY_SERVICE_ACCOUNT_JSON</code> secret</li>
+</ol>
+
+<p>Then link the service account to Google Play Console:</p>
+<ol>
+  <li>Go to Google Play Console &rarr; <strong>Settings</strong> &rarr; <strong>API access</strong></li>
+  <li>Link your Google Cloud project</li>
+  <li>Find your service account and click <strong>Manage Play Console permissions</strong></li>
+  <li>Grant <strong>Release to testing tracks</strong> permission for your app</li>
+  <li>Click <strong>Invite user</strong> &rarr; <strong>Send invite</strong></li>
+</ol>
+
+<!-- Android Step 5 -->
+<h3 class="android" id="android-5"><span class="step-num">5</span> Add GitHub Secrets</h3>
+
+<p>Go to your GitHub repo &rarr; <strong>Settings</strong> &rarr; <strong>Secrets and variables</strong> &rarr; <strong>Actions</strong>. Add these repository secrets:</p>
+
+<table class="secrets">
+  <tr><th>Secret Name</th><th>Value</th></tr>
+  <tr><td><code>ANDROID_KEYSTORE_BASE64</code></td><td>Base64-encoded keystore file from step 2</td></tr>
+  <tr><td><code>ANDROID_KEYSTORE_PASSWORD</code></td><td>The password you set when generating the keystore</td></tr>
+  <tr><td><code>ANDROID_KEY_ALIAS</code></td><td><code>raceyourfriends</code> (if you used the command above)</td></tr>
+  <tr><td><code>ANDROID_KEY_PASSWORD</code></td><td>Same as keystore password (unless you set them differently)</td></tr>
+  <tr><td><code>GOOGLE_PLAY_SERVICE_ACCOUNT_JSON</code></td><td>Full contents of the JSON key file from step 4</td></tr>
+  <tr><td><code>VITE_WS_URL</code></td><td>Your production WebSocket URL — likely already set</td></tr>
+</table>
+
+<!-- Android Step 6 -->
+<h3 class="android" id="android-6"><span class="step-num">6</span> Set Up Internal Testers</h3>
+
+<ol>
+  <li>In Google Play Console &rarr; your app &rarr; <strong>Testing</strong> &rarr; <strong>Internal testing</strong></li>
+  <li>Go to the <strong>Testers</strong> tab</li>
+  <li>Create an email list (e.g., "Beta Testers")</li>
+  <li>Add tester emails (must be Google accounts)</li>
+  <li>Save, then copy the <strong>opt-in link</strong> from the top of the page</li>
+  <li>Share the opt-in link with your testers</li>
+</ol>
+
+<figure class="screenshot">
+  <img src="screenshots/google-play-internal-testing.png" alt="Google Play internal testing">
+  <figcaption>Google Play Console: Internal testing setup</figcaption>
+</figure>
+
+<p>Testers click the opt-in link, accept, then install from the Play Store link provided. Up to <strong>100 testers</strong> per list. Builds are available within minutes of upload.</p>
+
+<div class="note android">
+  <strong>First upload:</strong> You need to manually upload the very first AAB through the Play Console UI before the API can upload subsequent builds. Run the CI once, download the AAB from the GitHub Actions artifacts, and upload it manually. After that, CI uploads will work automatically.
+</div>
+
+<hr>
+
+<!-- ============================================================ -->
+<!-- Triggering Builds -->
+<!-- ============================================================ -->
+
+<h2>Triggering Builds</h2>
+
+<p>Once setup is complete, deploy by pushing a tag:</p>
+
+<pre><code># Beta build (internal testers only)
+git tag v1.0.0-beta.1
+git push origin v1.0.0-beta.1
+
+# Release candidate (submit for external testing after upload)
+git tag v1.0.0-rc.1
+git push origin v1.0.0-rc.1</code></pre>
+
+<p>Both iOS and Android pipelines run in parallel. Check the Actions tab for progress. Each run produces:</p>
+<ul>
+  <li><strong>iOS:</strong> IPA uploaded to TestFlight + artifact saved in GitHub Actions</li>
+  <li><strong>Android:</strong> AAB uploaded to Play Store internal testing + artifact saved in GitHub Actions</li>
+  <li><strong>Job summary</strong> with version info and any manual steps needed</li>
+</ul>
+
+<hr>
+
+<!-- ============================================================ -->
+<!-- All secrets reference -->
+<!-- ============================================================ -->
+
+<h2>Complete Secrets Reference</h2>
+
+<p>All GitHub Actions repository secrets in one place:</p>
+
+<table class="secrets">
+  <tr><th>Secret</th><th>Platform</th><th>Source</th></tr>
+  <tr><td><code>VITE_WS_URL</code></td><td>Both</td><td>Your production WebSocket server URL</td></tr>
+  <tr><td><code>APP_STORE_CONNECT_KEY_ID</code></td><td>iOS</td><td>App Store Connect &rarr; API Keys</td></tr>
+  <tr><td><code>APP_STORE_CONNECT_ISSUER_ID</code></td><td>iOS</td><td>App Store Connect &rarr; API Keys (top of page)</td></tr>
+  <tr><td><code>APP_STORE_CONNECT_API_KEY_BASE64</code></td><td>iOS</td><td>Base64 of the downloaded <code>.p8</code> file</td></tr>
+  <tr><td><code>ANDROID_KEYSTORE_BASE64</code></td><td>Android</td><td>Base64 of generated <code>.keystore</code> file</td></tr>
+  <tr><td><code>ANDROID_KEYSTORE_PASSWORD</code></td><td>Android</td><td>Password you chose during <code>keytool</code></td></tr>
+  <tr><td><code>ANDROID_KEY_ALIAS</code></td><td>Android</td><td><code>raceyourfriends</code></td></tr>
+  <tr><td><code>ANDROID_KEY_PASSWORD</code></td><td>Android</td><td>Password you chose during <code>keytool</code></td></tr>
+  <tr><td><code>GOOGLE_PLAY_SERVICE_ACCOUNT_JSON</code></td><td>Android</td><td>Full JSON key file from Google Cloud Console</td></tr>
+</table>
+
+<hr>
+
+<!-- ============================================================ -->
+<!-- What CI changed in the project -->
+<!-- ============================================================ -->
+
+<h2>Project Files Changed for CI</h2>
+
+<p>These files were modified to support CI/CD beta distribution:</p>
+
+<h3><code>.github/workflows/ios.yml</code></h3>
+<p>Replaced the unsigned simulator build with a full archive + TestFlight upload pipeline. Uses the App Store Connect API key for automatic code signing (no manual certificate/profile management). Triggers on <code>v*-beta*</code> and <code>v*-rc*</code> tags. Extracts version from the tag and sets build number to the GitHub Actions run number.</p>
+
+<h3><code>.github/workflows/android.yml</code></h3>
+<p>Replaced the debug APK build with a signed release AAB build + Google Play internal testing upload. Decodes the keystore from a base64 secret, builds with <code>bundleRelease</code>, and uploads via the <code>r0adkll/upload-google-play</code> action. Same tag triggers as iOS.</p>
+
+<h3><code>android/app/build.gradle</code></h3>
+<p>Added conditional release signing configuration that reads from environment variables (<code>ANDROID_KEYSTORE_PATH</code>, <code>ANDROID_KEYSTORE_PASSWORD</code>, <code>ANDROID_KEY_ALIAS</code>, <code>ANDROID_KEY_PASSWORD</code>). When these aren't set (local dev), the release build type falls back to unsigned. Also added CI-injectable version: <code>ANDROID_VERSION_CODE</code> and <code>ANDROID_VERSION_NAME</code> env vars override the defaults.</p>
+
+<hr>
+
+<p style="text-align: center; color: var(--text-muted); margin-top: 2rem; font-size: 0.9rem;">
+  Race Your Friends &mdash; Beta Testing Distribution Guide<br>
+  <code>com.raceyourfriends.app</code> &bull; Capacitor 8.2 &bull; CI/CD via GitHub Actions
+</p>
+
+</div>
+</body>
+</html>

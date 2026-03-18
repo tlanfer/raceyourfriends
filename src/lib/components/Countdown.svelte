@@ -9,6 +9,7 @@
 	let timer: ReturnType<typeof setInterval> | null = null;
 	let lastBeep = -1;
 	let stuckAtZero = $state(false);
+	let showLeaveConfirm = $state(false);
 	let stuckTimer: ReturnType<typeof setTimeout> | null = null;
 
 	function cancel() {
@@ -73,7 +74,15 @@
 		{#if (raceState.isOwner || raceState.isGhostRace) && secondsLeft > 0}
 			<button class="btn btn-secondary cancel-btn" onclick={cancel}>Cancel</button>
 		{:else if !raceState.isOwner && !raceState.isGhostRace && secondsLeft > 0}
-			<button class="btn btn-secondary cancel-btn" onclick={leaveRace}>Leave Race</button>
+			{#if showLeaveConfirm}
+				<div class="leave-confirm">
+					<span>Leave race?</span>
+					<button class="btn-leave-yes" onclick={leaveRace}>Yes</button>
+					<button class="btn-leave-no" onclick={() => showLeaveConfirm = false}>No</button>
+				</div>
+			{:else}
+				<button class="btn btn-secondary cancel-btn" onclick={() => showLeaveConfirm = true}>Leave Race</button>
+			{/if}
 		{/if}
 
 		{#if stuckAtZero}
@@ -127,6 +136,35 @@
 		gap: 12px;
 		color: var(--text-muted);
 		font-size: 0.9rem;
+	}
+
+	.leave-confirm {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		font-size: 0.95rem;
+		color: var(--text-muted);
+	}
+
+	.btn-leave-yes,
+	.btn-leave-no {
+		background: none;
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 8px;
+		padding: 6px 20px;
+		font-size: 0.9rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.btn-leave-yes {
+		color: #f87171;
+		border-color: rgba(248, 113, 113, 0.3);
+	}
+
+	.btn-leave-no {
+		color: var(--text-muted);
 	}
 
 	@keyframes pulse {

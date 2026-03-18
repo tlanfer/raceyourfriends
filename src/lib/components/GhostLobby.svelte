@@ -7,6 +7,7 @@
 
 	let copied = $state(false);
 	let timeRemaining = $state('');
+	let showLeaveConfirm = $state(false);
 	let timer: ReturnType<typeof setInterval> | null = null;
 
 	const expired = $derived(
@@ -132,7 +133,15 @@
 			<button class="btn btn-primary start-btn" onclick={startMyRun} disabled={!hasGps}>
 				Start My Run
 			</button>
-			<button class="btn-leave" onclick={leaveRace}>Leave Race</button>
+			{#if showLeaveConfirm}
+				<div class="leave-confirm">
+					<span>Leave race?</span>
+					<button class="btn-leave-yes" onclick={leaveRace}>Yes</button>
+					<button class="btn-leave-no" onclick={() => showLeaveConfirm = false}>No</button>
+				</div>
+			{:else}
+				<button class="btn-leave" onclick={() => showLeaveConfirm = true}>Leave Race</button>
+			{/if}
 		{:else}
 			<div class="expired-notice">This race has closed</div>
 			<button class="btn btn-secondary start-btn" onclick={leaveRace}>Back to Home</button>
@@ -350,6 +359,37 @@
 
 	.btn-leave:hover {
 		color: var(--text);
+	}
+
+	.leave-confirm {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		padding: 8px;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+		width: 100%;
+	}
+
+	.btn-leave-yes,
+	.btn-leave-no {
+		background: none;
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 8px;
+		padding: 4px 16px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.btn-leave-yes {
+		color: #f87171;
+		border-color: rgba(248, 113, 113, 0.3);
+	}
+
+	.btn-leave-no {
+		color: var(--text-muted);
 	}
 
 	@keyframes spin {

@@ -5,6 +5,7 @@
 	import ChatPanel from './ChatPanel.svelte';
 
 	let copied = $state(false);
+	let showLeaveConfirm = $state(false);
 
 	const hasGps = $derived(raceState.gpsHasSignal);
 
@@ -79,7 +80,15 @@
 				</button>
 			{/if}
 		</div>
-		<button class="btn-leave" onclick={leaveRace}>Leave Race</button>
+		{#if showLeaveConfirm}
+			<div class="leave-confirm">
+				<span>Leave race?</span>
+				<button class="btn-leave-yes" onclick={leaveRace}>Yes</button>
+				<button class="btn-leave-no" onclick={() => showLeaveConfirm = false}>No</button>
+			</div>
+		{:else}
+			<button class="btn-leave" onclick={() => showLeaveConfirm = true}>Leave Race</button>
+		{/if}
 	</div>
 
 	<div class="players">
@@ -242,6 +251,36 @@
 
 	.btn-leave:hover {
 		color: var(--text);
+	}
+
+	.leave-confirm {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		gap: 12px;
+		padding: 8px;
+		font-size: 0.85rem;
+		color: var(--text-muted);
+	}
+
+	.btn-leave-yes,
+	.btn-leave-no {
+		background: none;
+		border: 1px solid rgba(255, 255, 255, 0.15);
+		border-radius: 8px;
+		padding: 4px 16px;
+		font-size: 0.8rem;
+		font-weight: 600;
+		cursor: pointer;
+	}
+
+	.btn-leave-yes {
+		color: #f87171;
+		border-color: rgba(248, 113, 113, 0.3);
+	}
+
+	.btn-leave-no {
+		color: var(--text-muted);
 	}
 
 	@keyframes spin {
