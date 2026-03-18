@@ -1,42 +1,60 @@
-# sv
+# Race Your Friends
 
-Everything you need to build a Svelte project, powered by [`sv`](https://github.com/sveltejs/cli).
+A real-time GPS racing app where players compete by physically moving. Players join a room via 4-character codes, and the app tracks each player's GPS distance toward a shared target distance. Built with SvelteKit, WebSockets, and WebRTC for peer-to-peer updates.
 
-## Creating a project
-
-If you're seeing this, you've probably already done this step. Congrats!
+## Getting started
 
 ```sh
-# create a new project
-npx sv create my-app
-```
-
-To recreate this project with the same configuration:
-
-```sh
-# recreate this project
-npx sv@0.12.7 create --template minimal --types ts --no-install .
-```
-
-## Developing
-
-Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn`), start a development server:
-
-```sh
+npm install
 npm run dev
-
-# or start the server and open the app in a new browser tab
-npm run dev -- --open
 ```
+
+This starts the Vite dev server with the WebSocket signaling server attached. Open the app in your browser and create or join a race.
 
 ## Building
 
-To create a production version of your app:
+The app builds as static files:
 
 ```sh
 npm run build
 ```
 
-You can preview the production build with `npm run preview`.
+Output goes to `build-static/`. Serve these files with any static file server (Nginx, Caddy, S3, etc.).
 
-> To deploy your app, you may need to install an [adapter](https://svelte.dev/docs/kit/adapters) for your target environment.
+## Standalone server
+
+The WebSocket signaling server lives in `server/` and can be deployed independently:
+
+```sh
+cd server
+npm install
+npm run build
+npm start
+```
+
+### Docker
+
+```sh
+docker build -t raceyourfriends-server server/
+docker run -p 3000:3000 raceyourfriends-server
+```
+
+See `docker-compose.example.yml` for a compose setup.
+
+The server is automatically built and published to `ghcr.io/tlanfer/raceyourfriends-server` on push to `main`.
+
+## Native apps (Capacitor)
+
+```sh
+npm run cap:sync
+```
+
+Set `VITE_WS_URL` to point to your deployed signaling server (see `.env.example`).
+
+## Testing
+
+```sh
+npm run test        # run once
+npm run test:watch  # watch mode
+npm run check       # type-check
+```
