@@ -11,5 +11,8 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm install --omit=dev
 COPY --from=build /app/dist ./dist
+RUN mkdir -p /app/data/races
+ENV DATA_DIR=/app/data/races
+VOLUME ["/app/data"]
 EXPOSE 3000
 CMD ["node", "dist/index.js"]

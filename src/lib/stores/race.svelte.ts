@@ -1,4 +1,5 @@
 export type RacePhase = 'setup' | 'lobby' | 'countdown' | 'racing' | 'finished';
+export type GhostPersonalPhase = 'waiting' | 'countdown' | 'racing' | 'finished';
 
 export interface ChatMessage {
 	id: string;
@@ -16,6 +17,28 @@ export interface Player {
 	ready: boolean;
 	finished: boolean;
 	finishOrder: number | null;
+}
+
+export interface GhostRunSummary {
+	runnerId: string;
+	runnerName: string;
+	finalDistance: number;
+	finishedAt: number | null;
+	startedAt: number;
+}
+
+export interface GhostPlaybackRun {
+	runnerId: string;
+	runnerName: string;
+	samples: { elapsed_ms: number; distance: number }[];
+}
+
+export interface GhostPlayer {
+	id: string;
+	name: string;
+	distance: number;
+	finished: boolean;
+	isGhost: boolean;
 }
 
 function loadFromStorage(key: string, fallback: string): string {
@@ -37,11 +60,20 @@ class RaceState {
 	targetDistance = $state(Number(loadFromStorage('targetDistance', '5000')));
 	isOwner = $state(false);
 	players = $state<Player[]>([]);
-	countdownValue = $state(10);
+	startTime = $state<number | null>(null);
 	myDistance = $state(0);
 	gpsAccuracy = $state<number | null>(null);
 	gpsHasSignal = $state(false);
 	messages = $state<ChatMessage[]>([]);
+
+	// Ghost race fields
+	isGhostRace = $state(false);
+	ghostExpiresAt = $state<number | null>(null);
+	ghostRuns = $state<GhostRunSummary[]>([]);
+	ghostPlaybackData = $state<GhostPlaybackRun[]>([]);
+	ghostPlayers = $state<GhostPlayer[]>([]);
+	myPersonalPhase = $state<GhostPersonalPhase>('waiting');
+	ghostPersonalStartTime = $state<number | null>(null);
 
 	get myPlayer(): Player | undefined {
 		return this.players.find((p) => p.id === this.myId);
@@ -112,11 +144,18 @@ class RaceState {
 		this.myId = '';
 		this.isOwner = false;
 		this.players = [];
-		this.countdownValue = 10;
+		this.startTime = null;
 		this.myDistance = 0;
 		this.gpsAccuracy = null;
 		this.gpsHasSignal = false;
 		this.messages = [];
+		this.isGhostRace = false;
+		this.ghostExpiresAt = null;
+		this.ghostRuns = [];
+		this.ghostPlaybackData = [];
+		this.ghostPlayers = [];
+		this.myPersonalPhase = 'waiting';
+		this.ghostPersonalStartTime = null;
 	}
 }
 

@@ -3,7 +3,7 @@
 	import { goto } from '$app/navigation';
 	import { raceState } from '$lib/stores/race.svelte.js';
 	import { isValidRaceCode } from '$lib/utils/race-code.js';
-	import { signaling } from '$lib/webrtc/signaling.js';
+	import { signaling } from '$lib/signaling.js';
 	import NameInput from '$lib/components/NameInput.svelte';
 
 	const code = $derived(($page.params.code ?? '').toUpperCase());
@@ -44,6 +44,21 @@
 			for (const p of msg.players) {
 				raceState.addPlayer({ ...p, distance: 0, finished: false, finishOrder: null });
 			}
+			if (msg.messages) {
+				raceState.messages = msg.messages;
+			}
+			goto(`/race/${msg.code}`);
+		});
+		signaling.on('ghost-race-joined', (msg) => {
+			raceState.raceCode = msg.code;
+			raceState.raceName = msg.raceName;
+			raceState.targetDistance = msg.targetDistance;
+			raceState.isGhostRace = true;
+			raceState.ghostExpiresAt = msg.expiresAt;
+			raceState.ghostRuns = msg.runs || [];
+			raceState.isOwner = false;
+			raceState.phase = 'lobby';
+			raceState.myPersonalPhase = 'waiting';
 			if (msg.messages) {
 				raceState.messages = msg.messages;
 			}

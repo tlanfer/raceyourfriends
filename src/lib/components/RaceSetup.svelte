@@ -3,12 +3,14 @@
 	import { isValidRaceCode } from '$lib/utils/race-code.js';
 	import { generateRaceName } from '$lib/utils/race-names.js';
 	import { goto } from '$app/navigation';
-	import { signaling } from '$lib/webrtc/signaling.js';
+	import { signaling } from '$lib/signaling.js';
 
 	let joinCode = $state('');
 	let raceName = $state(generateRaceName());
 	let customDistance = $state('');
 	let error = $state('');
+	let raceMode = $state<'live' | 'ghost'>('live');
+	let ghostDurationDays = $state(1);
 
 	const DISTANCES = [1000, 2000, 5000, 10_000, 15_000, 20_000];
 	const isPreset = $derived(DISTANCES.includes(raceState.targetDistance));
@@ -42,25 +44,51 @@
 		error = '';
 		signaling.clearHandlers();
 		signaling.connect();
-		signaling.on('connected', (msg) => {
-			raceState.myId = msg.id;
-			signaling.send({
-				type: 'create-race',
-				name: raceState.playerName,
-				raceName: raceName.trim(),
-				targetDistance: raceState.targetDistance
+
+		if (raceMode === 'ghost') {
+			signaling.on('connected', (msg) => {
+				raceState.myId = msg.id;
+				signaling.send({
+					type: 'create-ghost-race',
+					name: raceState.playerName,
+					raceName: raceName.trim(),
+					targetDistance: raceState.targetDistance,
+					durationDays: ghostDurationDays
+				});
 			});
-		});
-		signaling.on('race-created', (msg) => {
-			raceState.raceCode = msg.code;
-			raceState.raceName = msg.raceName;
-			raceState.isOwner = true;
-			raceState.phase = 'lobby';
-			for (const p of msg.players) {
-				raceState.addPlayer({ ...p, distance: 0, finished: false, finishOrder: null });
-			}
-			goto(`/race/${msg.code}`);
-		});
+			signaling.on('ghost-race-created', (msg) => {
+				raceState.raceCode = msg.code;
+				raceState.raceName = msg.raceName;
+				raceState.targetDistance = msg.targetDistance;
+				raceState.isGhostRace = true;
+				raceState.ghostExpiresAt = msg.expiresAt;
+				raceState.isOwner = true;
+				raceState.phase = 'lobby';
+				raceState.myPersonalPhase = 'waiting';
+				goto(`/race/${msg.code}`);
+			});
+		} else {
+			signaling.on('connected', (msg) => {
+				raceState.myId = msg.id;
+				signaling.send({
+					type: 'create-race',
+					name: raceState.playerName,
+					raceName: raceName.trim(),
+					targetDistance: raceState.targetDistance
+				});
+			});
+			signaling.on('race-created', (msg) => {
+				raceState.raceCode = msg.code;
+				raceState.raceName = msg.raceName;
+				raceState.isOwner = true;
+				raceState.phase = 'lobby';
+				for (const p of msg.players) {
+					raceState.addPlayer({ ...p, distance: 0, finished: false, finishOrder: null });
+				}
+				goto(`/race/${msg.code}`);
+			});
+		}
+
 		signaling.on('error', (msg) => {
 			error = msg.message;
 		});
@@ -97,6 +125,21 @@
 			for (const p of msg.players) {
 				raceState.addPlayer({ ...p, distance: 0, finished: false, finishOrder: null });
 			}
+			if (msg.messages) {
+				raceState.messages = msg.messages;
+			}
+			goto(`/race/${msg.code}`);
+		});
+		signaling.on('ghost-race-joined', (msg) => {
+			raceState.raceCode = msg.code;
+			raceState.raceName = msg.raceName;
+			raceState.targetDistance = msg.targetDistance;
+			raceState.isGhostRace = true;
+			raceState.ghostExpiresAt = msg.expiresAt;
+			raceState.ghostRuns = msg.runs || [];
+			raceState.isOwner = false;
+			raceState.phase = 'lobby';
+			raceState.myPersonalPhase = 'waiting';
 			if (msg.messages) {
 				raceState.messages = msg.messages;
 			}
@@ -159,8 +202,40 @@
 	</div>
 
 	<div class="section">
+		<h2>Race Mode</h2>
+		<div class="mode-toggle">
+			<button
+				class="btn mode-btn"
+				class:active={raceMode === 'live'}
+				onclick={() => (raceMode = 'live')}
+			>
+				Live Race
+			</button>
+			<button
+				class="btn mode-btn"
+				class:active={raceMode === 'ghost'}
+				onclick={() => (raceMode = 'ghost')}
+			>
+				Ghost Race
+			</button>
+		</div>
+		{#if raceMode === 'ghost'}
+			<div class="duration-picker">
+				<label class="duration-label" for="ghost-duration">Open for</label>
+				<select id="ghost-duration" class="input duration-select" bind:value={ghostDurationDays}>
+					<option value={1}>1 day</option>
+					<option value={2}>2 days</option>
+					<option value={3}>3 days</option>
+					<option value={5}>5 days</option>
+					<option value={7}>7 days</option>
+				</select>
+			</div>
+		{/if}
+	</div>
+
+	<div class="section">
 		<button class="btn btn-primary full" onclick={createRace} disabled={!raceState.playerName.trim()}>
-			Create Race
+			{raceMode === 'ghost' ? 'Create Ghost Race' : 'Create Race'}
 		</button>
 	</div>
 
@@ -294,6 +369,42 @@
 		font-weight: 700;
 		letter-spacing: 0.2em;
 		text-transform: uppercase;
+	}
+
+	.mode-toggle {
+		display: grid;
+		grid-template-columns: 1fr 1fr;
+		gap: 8px;
+	}
+
+	.mode-btn {
+		padding: 10px;
+		font-size: 0.9rem;
+		background: rgba(255, 255, 255, 0.06);
+		border: 1px solid rgba(255, 255, 255, 0.1);
+		border-radius: var(--radius);
+	}
+
+	.mode-btn.active {
+		background: var(--accent);
+		color: white;
+		border-color: var(--accent);
+	}
+
+	.duration-picker {
+		display: flex;
+		align-items: center;
+		gap: 10px;
+	}
+
+	.duration-label {
+		font-size: 0.85rem;
+		color: var(--text-muted);
+		white-space: nowrap;
+	}
+
+	.duration-select {
+		flex: 1;
 	}
 
 	.error {

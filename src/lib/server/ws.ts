@@ -3,19 +3,32 @@ import type { Server } from 'http';
 import {
 	createRoom,
 	getRoom,
+	setRoom,
 	addPlayerToRoom,
 	removePlayerFromRoom,
+	addSpectatorToRoom,
+	removeSpectatorFromRoom,
 	broadcastToRoom,
 	getPlayerList,
 	addMessage,
+	setGhostRoomCleanupHandler,
 	type RaceRoom,
-	type ChatMessage
+	type ChatMessage,
+	type ActiveGhostRun
 } from './race-rooms.js';
 import { generateRaceCode } from '../utils/race-code.js';
+import {
+	ensureDataDir,
+	loadGhostRace,
+	saveGhostRace,
+	deleteGhostRace,
+	type GhostRaceFile
+} from './ghost-storage.js';
 
 interface ClientState {
 	id: string;
 	roomCode: string | null;
+	isSpectator: boolean;
 }
 
 const clients = new WeakMap<WebSocket, ClientState>();
@@ -30,7 +43,21 @@ function generateId(): string {
 	return Math.random().toString(36).slice(2, 10);
 }
 
+function startBroadcastTimer(room: RaceRoom): void {
+	room.broadcastTimer = setInterval(() => {
+		const players = Array.from(room.players.keys()).map((id) => ({
+			id,
+			distance: room.distances.get(id) ?? 0,
+			finished: room.finishedPlayers.has(id)
+		}));
+		broadcastToRoom(room, { type: 'race-distances', players });
+	}, 5000);
+}
+
 export function setupWebSocketServer(server: Server): WebSocketServer {
+	ensureDataDir();
+	setGhostRoomCleanupHandler((code) => deleteGhostRace(code));
+
 	const wss = new WebSocketServer({ noServer: true });
 
 	// Only handle upgrade requests on our /ws path, leaving Vite HMR alone
@@ -45,7 +72,7 @@ export function setupWebSocketServer(server: Server): WebSocketServer {
 
 	wss.on('connection', (ws: WebSocket) => {
 		const clientId = generateId();
-		const state: ClientState = { id: clientId, roomCode: null };
+		const state: ClientState = { id: clientId, roomCode: null, isSpectator: false };
 		clients.set(ws, state);
 
 		send(ws, { type: 'connected', id: clientId });
@@ -75,6 +102,9 @@ function handleMessage(ws: WebSocket, state: ClientState, msg: any): void {
 		case 'join-race':
 			handleJoinRace(ws, state, msg);
 			break;
+		case 'watch-race':
+			handleWatchRace(ws, state, msg);
+			break;
 		case 'ready':
 			handleReady(ws, state, msg);
 			break;
@@ -83,11 +113,6 @@ function handleMessage(ws: WebSocket, state: ClientState, msg: any): void {
 			break;
 		case 'cancel-countdown':
 			handleCancelCountdown(ws, state);
-			break;
-		case 'rtc-offer':
-		case 'rtc-answer':
-		case 'rtc-ice':
-			handleRtcSignaling(ws, state, msg);
 			break;
 		case 'chat-message':
 			handleChatMessage(ws, state, msg);
@@ -100,6 +125,21 @@ function handleMessage(ws: WebSocket, state: ClientState, msg: any): void {
 			break;
 		case 'finished':
 			handleFinished(ws, state, msg);
+			break;
+		case 'create-ghost-race':
+			handleCreateGhostRace(ws, state, msg);
+			break;
+		case 'join-ghost-race':
+			handleJoinGhostRace(ws, state, msg);
+			break;
+		case 'ghost-start-run':
+			handleGhostStartRun(ws, state);
+			break;
+		case 'ghost-distance':
+			handleGhostDistance(ws, state, msg);
+			break;
+		case 'ghost-finished':
+			handleGhostFinished(ws, state, msg);
 			break;
 	}
 }
@@ -129,10 +169,21 @@ function handleCreateRace(ws: WebSocket, state: ClientState, msg: any): void {
 
 function handleJoinRace(ws: WebSocket, state: ClientState, msg: any): void {
 	const code = (msg.code || '').toUpperCase();
-	const room = getRoom(code);
+	let room: RaceRoom | undefined | null = getRoom(code);
+
+	// Try restoring ghost race from disk
+	if (!room) {
+		room = restoreGhostRoomFromDisk(code);
+	}
 
 	if (!room) {
 		send(ws, { type: 'error', message: 'Race not found' });
+		return;
+	}
+
+	// If it's a ghost race, redirect to ghost join handler
+	if (room.mode === 'ghost') {
+		handleJoinGhostRace(ws, state, msg);
 		return;
 	}
 
@@ -167,6 +218,41 @@ function handleJoinRace(ws: WebSocket, state: ClientState, msg: any): void {
 	}, state.id);
 }
 
+function handleWatchRace(ws: WebSocket, state: ClientState, msg: any): void {
+	const code = (msg.code || '').toUpperCase();
+	const room = getRoom(code);
+
+	if (!room) {
+		send(ws, { type: 'error', message: 'Race not found' });
+		return;
+	}
+
+	state.roomCode = code;
+	state.isSpectator = true;
+
+	addSpectatorToRoom(room, { id: state.id, ws });
+
+	// Build current distance info for players
+	const playersWithDistance = Array.from(room.players.keys()).map((id) => ({
+		id,
+		distance: room.distances.get(id) ?? 0,
+		finished: room.finishedPlayers.has(id)
+	}));
+
+	send(ws, {
+		type: 'race-watched',
+		code,
+		raceName: room.name,
+		targetDistance: room.targetDistance,
+		ownerId: room.ownerId,
+		phase: room.phase,
+		startTime: room.startTime,
+		players: getPlayerList(room),
+		distances: playersWithDistance,
+		messages: room.messages
+	});
+}
+
 function handleReady(ws: WebSocket, state: ClientState, msg: any): void {
 	if (!state.roomCode) return;
 	const room = getRoom(state.roomCode);
@@ -196,21 +282,17 @@ function handleStartRace(ws: WebSocket, state: ClientState): void {
 
 	console.log('[start-race] starting countdown for room', room.code);
 
+	const startTime = Date.now() + 10_000;
 	room.phase = 'countdown';
-	broadcastToRoom(room, { type: 'countdown-start' });
+	room.startTime = startTime;
+	broadcastToRoom(room, { type: 'countdown-start', startTime });
 
-	// Countdown from 10 to 0
-	let count = 10;
-	room.countdownTimer = setInterval(() => {
-		count--;
-		broadcastToRoom(room, { type: 'countdown-tick', value: count });
-		if (count <= 0) {
-			clearInterval(room.countdownTimer!);
-			room.countdownTimer = null;
-			room.phase = 'racing';
-			broadcastToRoom(room, { type: 'race-started' });
-		}
-	}, 1000);
+	room.countdownTimer = setTimeout(() => {
+		room.countdownTimer = null;
+		room.phase = 'racing';
+		broadcastToRoom(room, { type: 'race-started' });
+		startBroadcastTimer(room);
+	}, 10_000);
 }
 
 function handleCancelCountdown(ws: WebSocket, state: ClientState): void {
@@ -221,26 +303,12 @@ function handleCancelCountdown(ws: WebSocket, state: ClientState): void {
 	if (room.phase !== 'countdown') return;
 
 	if (room.countdownTimer) {
-		clearInterval(room.countdownTimer);
+		clearTimeout(room.countdownTimer);
 		room.countdownTimer = null;
 	}
+	room.startTime = null;
 	room.phase = 'lobby';
 	broadcastToRoom(room, { type: 'countdown-cancelled' });
-}
-
-function handleRtcSignaling(ws: WebSocket, state: ClientState, msg: any): void {
-	if (!state.roomCode) return;
-	const room = getRoom(state.roomCode);
-	if (!room) return;
-
-	const target = room.players.get(msg.targetId);
-	if (target) {
-		send(target.ws, {
-			type: msg.type,
-			fromId: state.id,
-			payload: msg.payload
-		});
-	}
 }
 
 function handleDistance(ws: WebSocket, state: ClientState, msg: any): void {
@@ -248,11 +316,7 @@ function handleDistance(ws: WebSocket, state: ClientState, msg: any): void {
 	const room = getRoom(state.roomCode);
 	if (!room || room.phase !== 'racing') return;
 
-	broadcastToRoom(room, {
-		type: 'player-distance',
-		playerId: state.id,
-		distance: msg.distance
-	}, state.id);
+	room.distances.set(state.id, msg.distance);
 }
 
 function handleFinished(ws: WebSocket, state: ClientState, msg: any): void {
@@ -260,13 +324,319 @@ function handleFinished(ws: WebSocket, state: ClientState, msg: any): void {
 	const room = getRoom(state.roomCode);
 	if (!room) return;
 
+	room.finishedPlayers.add(state.id);
+	room.distances.set(state.id, msg.distance ?? room.distances.get(state.id) ?? 0);
+
 	broadcastToRoom(room, {
 		type: 'player-finished',
 		playerId: state.id
 	}, state.id);
 }
 
-const ALLOWED_EMOTES = new Set(['🏃', '💨', '🔥', '😤', '💀', '🥵', '😂', '👋', '💪', '🏆']);
+// --- Ghost race handlers ---
+
+function buildGhostRaceFile(room: RaceRoom): GhostRaceFile {
+	return {
+		code: room.code,
+		name: room.name,
+		targetDistance: room.targetDistance,
+		createdAt: room.createdAt,
+		expiresAt: room.expiresAt!,
+		runs: room.completedRuns
+	};
+}
+
+// Throttle saves per room: at most once per 30s
+const lastSaveTimes = new Map<string, number>();
+
+function throttledSaveGhostRace(room: RaceRoom): void {
+	const now = Date.now();
+	const last = lastSaveTimes.get(room.code) ?? 0;
+	if (now - last < 30_000) return;
+	lastSaveTimes.set(room.code, now);
+
+	const file = buildGhostRaceFile(room);
+	if (room.activeRuns) {
+		for (const run of room.activeRuns.values()) {
+			file.runs.push({
+				runnerId: run.runnerId,
+				runnerName: run.runnerName,
+				samples: [...run.samples],
+				startedAt: run.personalStartTime,
+				finishedAt: null,
+				finalDistance: run.samples.length > 0 ? run.samples[run.samples.length - 1].distance : 0
+			});
+		}
+	}
+	saveGhostRace(room.code, file);
+}
+
+function restoreGhostRoomFromDisk(code: string): RaceRoom | null {
+	const file = loadGhostRace(code);
+	if (!file) return null;
+
+	const room: RaceRoom = {
+		code: file.code,
+		name: file.name,
+		ownerId: '',
+		targetDistance: file.targetDistance,
+		players: new Map(),
+		spectators: new Map(),
+		phase: 'lobby',
+		countdownTimer: null,
+		broadcastTimer: null,
+		startTime: null,
+		distances: new Map(),
+		finishedPlayers: new Set(),
+		createdAt: file.createdAt,
+		messages: [],
+		mode: 'ghost',
+		expiresAt: file.expiresAt,
+		completedRuns: file.runs,
+		activeRuns: new Map()
+	};
+	setRoom(code, room);
+	return room;
+}
+
+function handleCreateGhostRace(ws: WebSocket, state: ClientState, msg: any): void {
+	const code = generateRaceCode();
+	const targetDistance = Number(msg.targetDistance) || 500;
+	const raceName = msg.raceName || 'Unnamed Race';
+	const durationDays = Math.min(7, Math.max(1, Number(msg.durationDays) || 1));
+	const expiresAt = Date.now() + durationDays * 24 * 60 * 60 * 1000;
+
+	const room = createRoom(code, raceName, state.id, targetDistance, 'ghost', expiresAt);
+	state.roomCode = code;
+
+	addPlayerToRoom(room, {
+		id: state.id,
+		name: msg.name || 'Unknown',
+		ready: false,
+		ws
+	});
+
+	saveGhostRace(code, buildGhostRaceFile(room));
+
+	send(ws, {
+		type: 'ghost-race-created',
+		code,
+		raceName: room.name,
+		targetDistance: room.targetDistance,
+		expiresAt
+	});
+}
+
+function handleJoinGhostRace(ws: WebSocket, state: ClientState, msg: any): void {
+	const code = (msg.code || '').toUpperCase();
+	let room: RaceRoom | undefined | null = getRoom(code);
+
+	if (!room) {
+		room = restoreGhostRoomFromDisk(code);
+	}
+
+	if (!room || room.mode !== 'ghost') {
+		send(ws, { type: 'error', message: 'Ghost race not found' });
+		return;
+	}
+
+	state.roomCode = code;
+
+	addPlayerToRoom(room, {
+		id: state.id,
+		name: msg.name || 'Unknown',
+		ready: false,
+		ws
+	});
+
+	const expired = room.expiresAt != null && Date.now() > room.expiresAt;
+
+	const runs = room.completedRuns.map((r) => ({
+		runnerId: r.runnerId,
+		runnerName: r.runnerName,
+		finalDistance: r.finalDistance,
+		finishedAt: r.finishedAt,
+		startedAt: r.startedAt
+	}));
+
+	const activeRunners = room.activeRuns
+		? Array.from(room.activeRuns.values()).map((r) => ({
+				runnerId: r.runnerId,
+				runnerName: r.runnerName
+			}))
+		: [];
+
+	send(ws, {
+		type: 'ghost-race-joined',
+		code,
+		raceName: room.name,
+		targetDistance: room.targetDistance,
+		expiresAt: room.expiresAt,
+		runs,
+		activeRunners,
+		expired,
+		messages: room.messages
+	});
+
+	broadcastToRoom(
+		room,
+		{
+			type: 'player-joined',
+			player: { id: state.id, name: msg.name || 'Unknown', ready: false },
+			players: getPlayerList(room)
+		},
+		state.id
+	);
+}
+
+function handleGhostStartRun(ws: WebSocket, state: ClientState): void {
+	if (!state.roomCode) return;
+	const room = getRoom(state.roomCode);
+	if (!room || room.mode !== 'ghost') return;
+
+	if (room.expiresAt != null && Date.now() > room.expiresAt) {
+		send(ws, { type: 'error', message: 'This ghost race has expired' });
+		return;
+	}
+
+	if (!room.activeRuns) room.activeRuns = new Map();
+
+	const player = room.players.get(state.id);
+	if (!player) return;
+
+	const startTime = Date.now() + 10_000;
+
+	const activeRun: ActiveGhostRun = {
+		runnerId: state.id,
+		runnerName: player.name,
+		samples: [],
+		personalStartTime: startTime,
+		broadcastTimer: null
+	};
+	room.activeRuns.set(state.id, activeRun);
+
+	send(ws, { type: 'ghost-countdown-start', startTime });
+
+	broadcastToRoom(
+		room,
+		{
+			type: 'ghost-runner-starting',
+			runnerId: state.id,
+			runnerName: player.name
+		},
+		state.id
+	);
+
+	room.countdownTimer = setTimeout(() => {
+		const ghostRuns = room.completedRuns.map((r) => ({
+			runnerId: r.runnerId,
+			runnerName: r.runnerName,
+			samples: r.samples
+		}));
+
+		if (room.activeRuns) {
+			for (const [id, run] of room.activeRuns) {
+				if (id !== state.id) {
+					ghostRuns.push({
+						runnerId: run.runnerId,
+						runnerName: run.runnerName,
+						samples: [...run.samples]
+					});
+				}
+			}
+		}
+
+		send(ws, { type: 'ghost-race-started', ghostRuns });
+
+		activeRun.broadcastTimer = setInterval(() => {
+			if (!room.activeRuns) return;
+			const runners = Array.from(room.activeRuns.entries())
+				.filter(([id]) => id !== state.id)
+				.map(([id, r]) => ({
+					id,
+					distance: r.samples.length > 0 ? r.samples[r.samples.length - 1].distance : 0,
+					name: r.runnerName
+				}));
+			if (runners.length > 0) {
+				send(ws, { type: 'ghost-run-distances', players: runners });
+			}
+		}, 5000);
+	}, 10_000);
+}
+
+function handleGhostDistance(ws: WebSocket, state: ClientState, msg: any): void {
+	if (!state.roomCode) return;
+	const room = getRoom(state.roomCode);
+	if (!room || room.mode !== 'ghost' || !room.activeRuns) return;
+
+	const activeRun = room.activeRuns.get(state.id);
+	if (!activeRun) return;
+
+	const sample = {
+		elapsed_ms: Number(msg.elapsed_ms) || 0,
+		distance: Number(msg.distance) || 0
+	};
+	activeRun.samples.push(sample);
+
+	if (room.activeRuns) {
+		for (const [id, otherRun] of room.activeRuns) {
+			if (id !== state.id) {
+				const otherPlayer = room.players.get(id);
+				if (otherPlayer && otherPlayer.ws.readyState === 1) {
+					otherPlayer.ws.send(
+						JSON.stringify({
+							type: 'ghost-run-sample',
+							runnerId: state.id,
+							elapsed_ms: sample.elapsed_ms,
+							distance: sample.distance
+						})
+					);
+				}
+			}
+		}
+	}
+
+	throttledSaveGhostRace(room);
+}
+
+function handleGhostFinished(ws: WebSocket, state: ClientState, msg: any): void {
+	if (!state.roomCode) return;
+	const room = getRoom(state.roomCode);
+	if (!room || room.mode !== 'ghost' || !room.activeRuns) return;
+
+	const activeRun = room.activeRuns.get(state.id);
+	if (!activeRun) return;
+
+	if (activeRun.broadcastTimer) clearInterval(activeRun.broadcastTimer);
+
+	const completedRun = {
+		runnerId: activeRun.runnerId,
+		runnerName: activeRun.runnerName,
+		samples: activeRun.samples,
+		startedAt: activeRun.personalStartTime,
+		finishedAt: Date.now(),
+		finalDistance: Number(msg.distance) || (activeRun.samples.length > 0 ? activeRun.samples[activeRun.samples.length - 1].distance : 0)
+	};
+
+	room.completedRuns.push(completedRun);
+	room.activeRuns.delete(state.id);
+
+	lastSaveTimes.delete(room.code);
+	saveGhostRace(room.code, buildGhostRaceFile(room));
+
+	broadcastToRoom(room, {
+		type: 'ghost-run-complete',
+		run: {
+			runnerId: completedRun.runnerId,
+			runnerName: completedRun.runnerName,
+			finalDistance: completedRun.finalDistance,
+			finishedAt: completedRun.finishedAt,
+			startedAt: completedRun.startedAt
+		}
+	});
+}
+
+const ALLOWED_EMOTES = new Set(['\u{1F3C3}', '\u{1F4A8}', '\u{1F525}', '\u{1F624}', '\u{1F480}', '\u{1F975}', '\u{1F602}', '\u{1F44B}', '\u{1F4AA}', '\u{1F3C6}']);
 
 function handleChatMessage(ws: WebSocket, state: ClientState, msg: any): void {
 	if (!state.roomCode) return;
@@ -333,6 +703,29 @@ function handleDisconnect(ws: WebSocket, state: ClientState): void {
 	if (!state.roomCode) return;
 	const room = getRoom(state.roomCode);
 	if (!room) return;
+
+	if (state.isSpectator) {
+		removeSpectatorFromRoom(room, state.id);
+		return;
+	}
+
+	if (room.mode === 'ghost' && room.activeRuns) {
+		const activeRun = room.activeRuns.get(state.id);
+		if (activeRun) {
+			if (activeRun.broadcastTimer) clearInterval(activeRun.broadcastTimer);
+			room.completedRuns.push({
+				runnerId: activeRun.runnerId,
+				runnerName: activeRun.runnerName,
+				samples: activeRun.samples,
+				startedAt: activeRun.personalStartTime,
+				finishedAt: null,
+				finalDistance: activeRun.samples.length > 0 ? activeRun.samples[activeRun.samples.length - 1].distance : 0
+			});
+			room.activeRuns.delete(state.id);
+			lastSaveTimes.delete(room.code);
+			saveGhostRace(room.code, buildGhostRaceFile(room));
+		}
+	}
 
 	removePlayerFromRoom(room, state.id);
 

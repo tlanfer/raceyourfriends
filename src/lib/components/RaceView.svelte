@@ -5,14 +5,36 @@
 	import GpsStatus from './GpsStatus.svelte';
 	import ChatPanel from './ChatPanel.svelte';
 
+	import type { Player } from '$lib/stores/race.svelte.js';
+
 	function formatDistance(m: number): string {
 		if (m >= 1000) return `${(m / 1000).toFixed(2)} km`;
 		return `${Math.round(m)} m`;
 	}
 
+	// Merge ghost players into the player list for ghost races
+	function getAllPlayers(): Player[] {
+		if (!raceState.isGhostRace) return raceState.players;
+
+		const combined: Player[] = [...raceState.players];
+		for (const gp of raceState.ghostPlayers) {
+			if (!combined.find((p) => p.id === gp.id)) {
+				combined.push({
+					id: gp.id,
+					name: gp.name,
+					distance: gp.distance,
+					ready: true,
+					finished: gp.finished,
+					finishOrder: null
+				});
+			}
+		}
+		return combined;
+	}
+
 	// Live sorted order — this is reactive and updates immediately
 	const liveSortedIds = $derived(
-		[...raceState.players]
+		[...getAllPlayers()]
 			.sort((a, b) => b.distance - a.distance)
 			.map((p) => p.id)
 	);
@@ -84,7 +106,7 @@
 	// Players in debounced sort order
 	const displayPlayers = $derived(
 		sortedIds
-			.map((id) => raceState.players.find((p) => p.id === id))
+			.map((id) => getAllPlayers().find((p) => p.id === id))
 			.filter((p): p is NonNullable<typeof p> => p != null)
 	);
 </script>
@@ -149,4 +171,5 @@
 		gap: 8px;
 		flex-shrink: 0;
 	}
+
 </style>
