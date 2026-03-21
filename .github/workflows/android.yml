@@ -2,6 +2,9 @@ name: Android Internal Testing
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*-beta*'
 
 permissions:
   contents: write
