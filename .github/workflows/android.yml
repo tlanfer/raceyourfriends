@@ -54,7 +54,13 @@ jobs:
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
 
       - name: Patch build.gradle with signing config
-        run: cp .github/android-build.gradle android/app/build.gradle
+        run: |
+          echo "=== Generated build.gradle ==="
+          cat android/app/build.gradle
+          echo "=== Generated variables.gradle ==="
+          cat android/variables.gradle
+          echo "=== Patching ==="
+          cp .github/android-build.gradle android/app/build.gradle
 
       - name: Build release AAB
         working-directory: android
@@ -65,7 +71,7 @@ jobs:
           ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
           ANDROID_VERSION_NAME: ${{ steps.version.outputs.version_name }}
           ANDROID_VERSION_CODE: ${{ steps.version.outputs.version_code }}
-        run: ./gradlew bundleRelease
+        run: ./gradlew bundleRelease --stacktrace
 
       - name: Upload AAB artifact
         uses: actions/upload-artifact@v7
