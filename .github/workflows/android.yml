@@ -54,56 +54,7 @@ jobs:
         run: echo "${{ secrets.ANDROID_KEYSTORE_BASE64 }}" | base64 --decode > android/app/release.keystore
 
       - name: Patch build.gradle with signing config
-        run: |
-          cat > /tmp/signing-patch.py << 'PYEOF'
-          import re
-
-          with open("android/app/build.gradle") as f:
-              content = f.read()
-
-          # Add keystore path variable after the plugin line
-          content = content.replace(
-              "apply plugin: 'com.android.application'",
-              "apply plugin: 'com.android.application'\n\ndef keystorePath = System.getenv(\"ANDROID_KEYSTORE_PATH\")"
-          )
-
-          # Add versionCode/versionName from env vars in defaultConfig
-          content = content.replace(
-              'versionCode 1',
-              'versionCode (System.getenv("ANDROID_VERSION_CODE") ?: "1").toInteger()'
-          )
-          content = content.replace(
-              "versionName \"1.0\"",
-              'versionName System.getenv("ANDROID_VERSION_NAME") ?: "1.0"'
-          )
-
-          # Add signingConfigs block and wire it into release buildType
-          signing_config = """
-    if (keystorePath) {
-        signingConfigs {
-            release {
-                storeFile file(keystorePath)
-                storePassword System.getenv("ANDROID_KEYSTORE_PASSWORD")
-                keyAlias System.getenv("ANDROID_KEY_ALIAS")
-                keyPassword System.getenv("ANDROID_KEY_PASSWORD")
-            }
-        }
-    }
-
-"""
-          # Insert signingConfigs before buildTypes
-          content = content.replace("    buildTypes {", signing_config + "    buildTypes {")
-
-          # Add signingConfig to release buildType
-          content = content.replace(
-              "            minifyEnabled false",
-              "            if (keystorePath) {\n                signingConfig signingConfigs.release\n            }\n            minifyEnabled false"
-          )
-
-          with open("android/app/build.gradle", "w") as f:
-              f.write(content)
-          PYEOF
-          python3 /tmp/signing-patch.py
+        run: cp .github/android-build.gradle android/app/build.gradle
 
       - name: Build release AAB
         working-directory: android
