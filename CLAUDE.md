@@ -58,6 +58,12 @@ The app always builds as static files via `adapter-static` (output: `build-stati
 - Countdown uses timestamp-based sync: server sends `startTime`, clients compute countdown locally
 - Native platform features (background GPS, keep-awake) are conditionally loaded via `Capacitor.isNativePlatform()`
 
+## CI / Capacitor native projects
+
+**Important:** The CI workflows run `cap add ios` / `cap add android` which **recreate the native Xcode/Android Studio projects from scratch** on every build. This means any native configuration that isn't in `capacitor.config.ts` or the default template will be lost. Required native settings (Info.plist entries, `UIBackgroundModes`, `build.gradle` signing config, etc.) must be applied as post-`cap add` steps in the CI workflow files (`.github/workflows/ios.yml`, `.github/workflows/android.yml`).
+
+The checked-in `ios/` and `android/` directories are snapshots and may be stale — the CI build is the source of truth for native configuration.
+
 ## Environment Variables
 
 - `VITE_WS_URL` — WebSocket server URL for native Capacitor builds (see `.env.example`)
