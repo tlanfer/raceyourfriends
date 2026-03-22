@@ -31,11 +31,13 @@
 	function startGpsWarmup() {
 		if (Capacitor.isNativePlatform()) {
 			// On native, use background geolocation for warmup
+			// requestPermissions is false — permissions are requested
+			// separately via acceptPrivacy() to avoid native crashes
 			BackgroundGeolocation.start(
 				{
 					backgroundTitle: 'Race Your Friends',
 					backgroundMessage: 'Acquiring GPS signal...',
-					requestPermissions: true,
+					requestPermissions: false,
 					stale: false,
 					distanceFilter: 0
 				},
@@ -278,7 +280,17 @@
 	function acceptPrivacy() {
 		showPrivacy = false;
 		localStorage.setItem('privacyAccepted', '1');
-		startGpsWarmup();
+		if (Capacitor.isNativePlatform()) {
+			// Request location permission via web API first (safe on iOS),
+			// then start the native background geolocation plugin
+			navigator.geolocation.getCurrentPosition(
+				() => startGpsWarmup(),
+				() => startGpsWarmup(), // Start anyway — plugin will report errors via callback
+				{ enableHighAccuracy: true }
+			);
+		} else {
+			startGpsWarmup();
+		}
 	}
 
 	async function startTracking() {

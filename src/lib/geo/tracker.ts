@@ -61,7 +61,7 @@ export class GeoTracker {
 				{
 					backgroundTitle: 'Race Your Friends',
 					backgroundMessage: 'Tracking your distance...',
-					requestPermissions: true,
+					requestPermissions: false,
 					stale: false,
 					distanceFilter: 0
 				},
