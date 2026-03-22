@@ -20,7 +20,6 @@
 	import PrivacyNotice from '$lib/components/PrivacyNotice.svelte';
 
 	let showPrivacy = $state(typeof localStorage !== 'undefined' ? !localStorage.getItem('privacyAccepted') : true);
-	let gpsGranted = $state(false);
 	let tracker: GeoTracker | null = null;
 	let ghostPlayback: GhostPlayback | null = null;
 	let lastDistanceSend = 0;
@@ -51,7 +50,9 @@
 						resetGpsWarmupTimer();
 					}
 				}
-			);
+			).catch(() => {
+				raceState.gpsHasSignal = false;
+			});
 		} else if ('geolocation' in navigator) {
 			gpsWarmupId = navigator.geolocation.watchPosition(
 				(pos) => {
@@ -74,9 +75,9 @@
 		}, 10_000);
 	}
 
-	function stopGpsWarmup() {
+	async function stopGpsWarmup() {
 		if (Capacitor.isNativePlatform()) {
-			BackgroundGeolocation.stop().catch(() => {});
+			await BackgroundGeolocation.stop().catch(() => {});
 		} else if (gpsWarmupId !== null) {
 			navigator.geolocation.clearWatch(gpsWarmupId);
 			gpsWarmupId = null;
@@ -94,7 +95,9 @@
 			return;
 		}
 
-		startGpsWarmup();
+		if (!showPrivacy) {
+			startGpsWarmup();
+		}
 
 		// Track connection state
 		removeOpenHandler = signaling.on('open', () => {
@@ -275,17 +278,11 @@
 	function acceptPrivacy() {
 		showPrivacy = false;
 		localStorage.setItem('privacyAccepted', '1');
-		if ('geolocation' in navigator) {
-			navigator.geolocation.getCurrentPosition(
-				() => { gpsGranted = true; },
-				() => {},
-				{ enableHighAccuracy: true }
-			);
-		}
+		startGpsWarmup();
 	}
 
 	async function startTracking() {
-		stopGpsWarmup();
+		await stopGpsWarmup();
 		KeepAwake.keepAwake().catch(() => {});
 
 		tracker = new GeoTracker();
@@ -317,7 +314,7 @@
 	}
 
 	async function startGhostTracking() {
-		stopGpsWarmup();
+		await stopGpsWarmup();
 		KeepAwake.keepAwake().catch(() => {});
 
 		// Initialize ghost playback
