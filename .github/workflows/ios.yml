@@ -40,6 +40,8 @@ jobs:
           /usr/libexec/PlistBuddy -c "Add :NSLocationWhenInUseUsageDescription string 'Race Your Friends needs your location to track your distance during races.'" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :NSLocationAlwaysAndWhenInUseUsageDescription string 'Race Your Friends needs your location in the background to keep tracking your distance while the app is minimized during a race.'" "$PLIST"
           /usr/libexec/PlistBuddy -c "Add :ITSAppUsesNonExemptEncryption bool false" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes array" "$PLIST"
+          /usr/libexec/PlistBuddy -c "Add :UIBackgroundModes:0 string location" "$PLIST"
 
       - name: Extract version from tag
         id: version
